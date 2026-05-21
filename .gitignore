@@ -1,0 +1,26 @@
+# Environment — never commit
+.env
+.env.local
+.env.*.local
+
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+
+# Database
+data/
+*.db
+*.sqlite
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+
+# Lock files (keep pnpm-lock.yaml out of diffs)
+pnpm-lock.yaml
