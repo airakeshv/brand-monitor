@@ -380,9 +380,31 @@ function ScheduleTab({ s, set, onActivate, onStop, schedMsg }) {
     ? Math.round((new Date(rangeTo) - new Date(rangeFrom)) / 86400000)
     : 0;
   const rangeOver = rangeDays > 90;
+  const today    = new Date().toISOString().slice(0, 10);
+  const isPaused = !!(s.pause_from && s.pause_to && today >= s.pause_from && today <= s.pause_to);
 
   return (
     <div>
+
+      {/* active pause warning — shown when today falls within the pause window */}
+      {isPaused && (
+        <div style={{ background:'rgba(239,68,68,0.1)', border:'1px solid #ef4444', borderRadius:10,
+          padding:'12px 16px', marginBottom:20, display:'flex', justifyContent:'space-between',
+          alignItems:'center', gap:12 }}>
+          <div>
+            <div style={{ color:'#ef4444', fontWeight:700, fontSize:13 }}>⏸ Delivery is currently paused</div>
+            <div style={{ color:'#B4B4B4', fontSize:12, marginTop:2 }}>
+              No emails will be sent until {s.pause_to}. Click Resume to start sending again.
+            </div>
+          </div>
+          <button onClick={() => set({...s, pause_from:null, pause_to:null})}
+            style={{ background:'#ef4444', color:'#fff', border:'none', borderRadius:6,
+              padding:'7px 14px', fontWeight:700, cursor:'pointer', fontSize:12, whiteSpace:'nowrap' }}>
+            Resume Now
+          </button>
+        </div>
+      )}
+
       {/* AM/PM time picker */}
       <Field label="Daily Delivery Time" hint="Digest is generated and emailed at this time every day.">
         <div style={{ display:'flex', gap:8 }}>
@@ -421,29 +443,6 @@ function ScheduleTab({ s, set, onActivate, onStop, schedMsg }) {
         </TSelect>
       </Field>
 
-      {/* Pause delivery date range */}
-      <Field label="Pause Delivery (optional)" hint="Skip sending digests during a date range — e.g. holidays.">
-        <div style={{ display:'flex', gap:8, alignItems:'flex-end' }}>
-          <div style={{ flex:1 }}>
-            <div style={{ color:'#6B7A99', fontSize:11, marginBottom:4 }}>FROM DATE</div>
-            <input type="date" value={s.pause_from||''} onChange={e=>set({...s,pause_from:e.target.value})}
-              style={{ ...inputStyle, colorScheme:'dark' }} />
-          </div>
-          <div style={{ flex:1 }}>
-            <div style={{ color:'#6B7A99', fontSize:11, marginBottom:4 }}>TO DATE</div>
-            <input type="date" value={s.pause_to||''} onChange={e=>set({...s,pause_to:e.target.value})}
-              style={{ ...inputStyle, colorScheme:'dark' }} />
-          </div>
-          {(s.pause_from || s.pause_to) && (
-            <button onClick={() => set({...s, pause_from:null, pause_to:null})}
-              style={{ background:'#2A3858', color:'#B4B4B4', border:'none', borderRadius:8,
-                padding:'10px 12px', cursor:'pointer', fontSize:12, whiteSpace:'nowrap' }}>
-              Clear
-            </button>
-          )}
-        </div>
-      </Field>
-
       {/* test email + custom date-range run */}
       <div style={{ marginTop:24, display:'flex', flexDirection:'column', gap:12 }}>
 
@@ -474,9 +473,9 @@ function ScheduleTab({ s, set, onActivate, onStop, schedMsg }) {
         {/* custom date-range run */}
         <div style={{ background:'#0A0E27', border:'1px solid #2A3858', borderRadius:10, padding:'16px 18px' }}>
           <div style={{ color:'#B4B4B4', fontSize:11, fontWeight:700, textTransform:'uppercase',
-            letterSpacing:'0.06em', marginBottom:6 }}>Run for Custom Date Range</div>
+            letterSpacing:'0.06em', marginBottom:6 }}>Search News for a Specific Period & Email</div>
           <p style={{ color:'#6B7A99', fontSize:12, margin:'0 0 12px' }}>
-            Search news from a specific period and email the digest. <strong style={{ color:'#B4B4B4' }}>Max 90 days</strong> for reliable results.
+            Select a FROM and TO date — news for that period will be fetched and emailed to you immediately. <strong style={{ color:'#B4B4B4' }}>Max 90 days.</strong>
           </p>
           <div style={{ display:'flex', gap:8, alignItems:'flex-end', flexWrap:'wrap' }}>
             <div style={{ flex:1, minWidth:120 }}>
@@ -511,10 +510,48 @@ function ScheduleTab({ s, set, onActivate, onStop, schedMsg }) {
             </div>
           )}
           {rangeDays > 0 && !rangeOver && (
-            <div style={{ marginTop:8, color:'#22c55e', fontSize:12 }}>✓ {rangeDays}-day range selected</div>
+            <div style={{ marginTop:8, color:'#22c55e', fontSize:12 }}>✓ {rangeDays}-day range — click Run &amp; Email</div>
           )}
         </div>
       </div>
+
+      {/* pause delivery — collapsible to avoid confusion with search range */}
+      <details style={{ background:'#0A0E27', border:'1px solid #2A3858', borderRadius:10,
+        overflow:'hidden', marginTop:4 }}>
+        <summary style={{ padding:'12px 18px', color:'#6B7A99', fontSize:13, fontWeight:600,
+          cursor:'pointer', userSelect:'none', listStyle:'none' }}>
+          ⏸ Pause Delivery (Advanced) — skip emails during holidays
+        </summary>
+        <div style={{ padding:'0 18px 16px' }}>
+          <p style={{ color:'#6B7A99', fontSize:12, margin:'0 0 12px' }}>
+            Set a date range to stop the daily schedule. <strong style={{ color:'#ef4444' }}>This is NOT the same as searching news by date above.</strong> This simply pauses automatic emails.
+          </p>
+          <div style={{ display:'flex', gap:8, alignItems:'flex-end' }}>
+            <div style={{ flex:1 }}>
+              <div style={{ color:'#6B7A99', fontSize:11, marginBottom:4 }}>PAUSE FROM</div>
+              <input type="date" value={s.pause_from||''} onChange={e=>set({...s,pause_from:e.target.value})}
+                style={{ ...inputStyle, colorScheme:'dark' }} />
+            </div>
+            <div style={{ flex:1 }}>
+              <div style={{ color:'#6B7A99', fontSize:11, marginBottom:4 }}>PAUSE UNTIL</div>
+              <input type="date" value={s.pause_to||''} onChange={e=>set({...s,pause_to:e.target.value})}
+                style={{ ...inputStyle, colorScheme:'dark' }} />
+            </div>
+            {(s.pause_from || s.pause_to) && (
+              <button onClick={() => set({...s, pause_from:null, pause_to:null})}
+                style={{ background:'#ef4444', color:'#fff', border:'none', borderRadius:8,
+                  padding:'10px 14px', cursor:'pointer', fontSize:12, whiteSpace:'nowrap', fontWeight:700 }}>
+                Clear Pause
+              </button>
+            )}
+          </div>
+          {(s.pause_from || s.pause_to) && (
+            <div style={{ marginTop:10, color:'#facc15', fontSize:12 }}>
+              ⚠ Emails paused: {s.pause_from || '?'} to {s.pause_to || '?'}
+            </div>
+          )}
+        </div>
+      </details>
 
       {/* action buttons */}
       <div style={{ display:'flex', gap:10, marginTop:24, flexWrap:'wrap' }}>

@@ -1,5 +1,14 @@
 import SourceBadge from './SourceBadge.jsx';
 
+// format ISO date to "1 Jan 2026" — returns empty string if null or invalid
+function fmtDate(iso) {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso.includes('T') ? iso : iso + 'T12:00:00Z');
+    return isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+  } catch { return ''; }
+}
+
 // sentiment → color mapping
 function sentimentColor(s = '') {
   if (s.includes('strongly_positive')) return '#22c55e';
@@ -128,8 +137,12 @@ export default function DigestPreview({ digest }) {
         <div style={{ color: '#FFFFFF', fontSize: 20, fontWeight: 700 }}>
           Brand<span style={{ color: '#fff' }}>Monitor</span>
         </div>
-        <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: 14, marginTop: 2 }}>
-          {digest.company} · {digest.timezone_label || digest.date}
+        <div style={{ color: 'rgba(255,255,255,0.9)', fontSize: 15, fontWeight: 600, marginTop: 4 }}>
+          {digest.company}
+        </div>
+        <div style={{ color: 'rgba(255,255,255,0.75)', fontSize: 12, marginTop: 3 }}>
+          📅 {fmtDate(digest.date) || digest.date || 'No date'}
+          {digest.timezone_label ? ' · ' + digest.timezone_label : ''}
         </div>
         <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12, marginTop: 2 }}>
           Model: {digest.model_used}

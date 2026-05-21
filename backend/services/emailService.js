@@ -24,10 +24,13 @@ function urgencyColor(u = '') {
   return '#facc15';
 }
 
-// format YYYY-MM-DD to "1 Jan 2026"
+// format YYYY-MM-DD to "1 Jan 2026" — returns empty string if null or unparseable
 function fmtReadable(iso) {
-  try { return new Date(iso + 'T12:00:00Z').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }); }
-  catch { return iso; }
+  if (!iso) return '';
+  try {
+    const d = new Date(iso.includes('T') ? iso : iso + 'T12:00:00Z');
+    return isNaN(d.getTime()) ? (iso || '') : d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+  } catch { return iso || ''; }
 }
 
 // build HTML email from DigestSchema
