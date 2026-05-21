@@ -103,7 +103,15 @@ router.post('/run-now', async (req, res) => {
       ...(date_from && { search_from: date_from }),
       ...(date_to   && { search_to:   date_to   }),
     };
-    if (date_from && date_to) send(`Searching news from ${date_from} to ${date_to}…`);
+    if (date_from && date_to) {
+      const days = Math.round((new Date(date_to) - new Date(date_from)) / 86400000);
+      if (days > 90) {
+        res.write(`data: ${JSON.stringify({ error: `Date range is ${days} days — max is 90 days for reliable results. Please narrow your selection.` })}\n\n`);
+        res.end();
+        return;
+      }
+      send(`Searching news from ${date_from} to ${date_to} (${days} days)…`);
+    }
     const { id, digest } = await runDigest(company, settings, send);
 
     // attach date range to digest so email template can show coverage period

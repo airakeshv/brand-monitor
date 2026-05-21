@@ -375,7 +375,11 @@ function ScheduleTab({ s, set, onActivate, onStop, schedMsg }) {
     } catch (e) { setRunState('error'); setRunMsg(e.message); }
   };
 
-  const runColor = runState === 'done' ? '#22c55e' : runState === 'error' ? '#ef4444' : '#6B7A99';
+  const runColor  = runState === 'done' ? '#22c55e' : runState === 'error' ? '#ef4444' : '#6B7A99';
+  const rangeDays = rangeFrom && rangeTo
+    ? Math.round((new Date(rangeTo) - new Date(rangeFrom)) / 86400000)
+    : 0;
+  const rangeOver = rangeDays > 90;
 
   return (
     <div>
@@ -472,31 +476,43 @@ function ScheduleTab({ s, set, onActivate, onStop, schedMsg }) {
           <div style={{ color:'#B4B4B4', fontSize:11, fontWeight:700, textTransform:'uppercase',
             letterSpacing:'0.06em', marginBottom:6 }}>Run for Custom Date Range</div>
           <p style={{ color:'#6B7A99', fontSize:12, margin:'0 0 12px' }}>
-            Search news from a specific period and email the digest.
+            Search news from a specific period and email the digest. <strong style={{ color:'#B4B4B4' }}>Max 90 days</strong> for reliable results.
           </p>
           <div style={{ display:'flex', gap:8, alignItems:'flex-end', flexWrap:'wrap' }}>
             <div style={{ flex:1, minWidth:120 }}>
               <div style={{ color:'#6B7A99', fontSize:11, marginBottom:4 }}>FROM</div>
               <input type="date" value={rangeFrom} onChange={e => setRangeFrom(e.target.value)}
-                style={{ ...inputStyle, colorScheme:'dark' }} />
+                style={{ ...inputStyle, colorScheme:'dark', borderColor: rangeOver ? '#ef4444' : '#2A3858' }} />
             </div>
             <div style={{ flex:1, minWidth:120 }}>
               <div style={{ color:'#6B7A99', fontSize:11, marginBottom:4 }}>TO</div>
               <input type="date" value={rangeTo} onChange={e => setRangeTo(e.target.value)}
-                style={{ ...inputStyle, colorScheme:'dark' }} />
+                style={{ ...inputStyle, colorScheme:'dark', borderColor: rangeOver ? '#ef4444' : '#2A3858' }} />
             </div>
             <button
               onClick={() => fireRun(rangeFrom, rangeTo)}
-              disabled={runState === 'running' || !rangeFrom || !rangeTo || !s.company_name?.trim()}
+              disabled={runState === 'running' || !rangeFrom || !rangeTo || !s.company_name?.trim() || rangeOver}
               style={{
-                background:'#5B63EB', color:'#fff', border:'none', borderRadius:8,
-                padding:'10px 18px', fontWeight:700, cursor:'pointer', fontSize:14,
-                opacity: (!rangeFrom || !rangeTo || !s.company_name?.trim()) ? 0.5 : 1, whiteSpace:'nowrap',
+                background: rangeOver ? '#2A3858' : '#5B63EB', color:'#fff', border:'none', borderRadius:8,
+                padding:'10px 18px', fontWeight:700,
+                cursor: (rangeOver || !rangeFrom || !rangeTo) ? 'not-allowed' : 'pointer',
+                fontSize:14, opacity: (!rangeFrom || !rangeTo || !s.company_name?.trim() || rangeOver) ? 0.5 : 1,
+                whiteSpace:'nowrap',
               }}
             >
               Run & Email
             </button>
           </div>
+          {rangeOver && (
+            <div style={{ marginTop:10, background:'rgba(239,68,68,0.08)', border:'1px solid #ef4444',
+              borderRadius:8, padding:'8px 14px', fontSize:12, color:'#ef4444' }}>
+              ✗ Range is <strong>{rangeDays} days</strong> — maximum is 90 days for reliable results.
+              Please shorten your date selection.
+            </div>
+          )}
+          {rangeDays > 0 && !rangeOver && (
+            <div style={{ marginTop:8, color:'#22c55e', fontSize:12 }}>✓ {rangeDays}-day range selected</div>
+          )}
         </div>
       </div>
 

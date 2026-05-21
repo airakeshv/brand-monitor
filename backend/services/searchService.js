@@ -134,14 +134,17 @@ export async function searchLinkedIn(company) {
   return results.map(r => ({ ...r, source: 'LinkedIn', source_category: 'social' }));
 }
 
-// search X/Twitter via Serper — combines direct x.com results with news articles referencing tweets
+// search X/Twitter — direct site: search + news articles that quote/reference tweets
+// Note: X.com blocks most Google indexing; official Twitter API needed for real-time coverage
 export async function searchTwitter(company) {
-  const [direct, mentioned] = await Promise.all([
+  const [direct, newsRefs] = await Promise.all([
+    // direct x.com search (returns whatever Google has indexed)
     serperSearch(`"${company}" site:x.com OR site:twitter.com`, { tbs: 'qdr:d' }),
-    serperSearch(`"${company}" tweet OR twitter reaction OR twitter users`, { tbs: 'qdr:d', num: 5 }),
+    // news articles that quote or report on tweets mentioning the company
+    serperSearch(`"${company}" (tweeted OR "on twitter" OR "on X" OR tweet) -site:twitter.com -site:x.com`, { tbs: 'qdr:w', num: 8 }),
   ]);
   const seen = new Set();
-  return [...direct, ...mentioned]
+  return [...direct, ...newsRefs]
     .filter(r => { if (seen.has(r.link)) return false; seen.add(r.link); return true; })
     .map(r => ({ ...r, source: 'X/Twitter', source_category: 'social' }));
 }
