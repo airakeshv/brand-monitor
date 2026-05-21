@@ -24,6 +24,12 @@ function urgencyColor(u = '') {
   return '#facc15';
 }
 
+// format YYYY-MM-DD to "1 Jan 2026"
+function fmtReadable(iso) {
+  try { return new Date(iso + 'T12:00:00Z').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }); }
+  catch { return iso; }
+}
+
 // build HTML email from DigestSchema
 function buildHtml(digest) {
   const newsRows = (digest.news || []).map(n => `
@@ -71,8 +77,16 @@ function buildHtml(digest) {
         <!-- Header -->
         <tr><td style="background:linear-gradient(135deg,#5B63EB,#E91E8C);padding:24px 32px">
           <div style="color:#FFFFFF;font-size:22px;font-weight:700">Brand<span style="color:#fff">Monitor</span></div>
-          <div style="color:rgba(255,255,255,0.8);font-size:14px;margin-top:4px">${digest.company} · ${digest.timezone_label || digest.date}</div>
-          <div style="color:rgba(255,255,255,0.6);font-size:12px;margin-top:2px">Powered by ${digest.model_used}</div>
+          <div style="color:rgba(255,255,255,0.9);font-size:16px;font-weight:600;margin-top:6px">${digest.company}</div>
+          <div style="color:rgba(255,255,255,0.8);font-size:13px;margin-top:4px">
+            📅 ${digest.timezone_label || fmtReadable(digest.date) || digest.date}
+          </div>
+          ${digest.search_from && digest.search_to
+            ? `<div style="background:rgba(255,255,255,0.18);border-radius:8px;padding:7px 14px;margin-top:10px;display:inline-block">
+                <span style="color:#FFFFFF;font-size:13px;font-weight:600">📰 Coverage: ${fmtReadable(digest.search_from)} – ${fmtReadable(digest.search_to)}</span>
+               </div>`
+            : ''}
+          <div style="color:rgba(255,255,255,0.6);font-size:12px;margin-top:8px">Powered by ${digest.model_used}</div>
         </td></tr>
 
         <tr><td style="padding:24px 32px">
@@ -107,9 +121,13 @@ function buildHtml(digest) {
 
 // build plain-text fallback
 function buildText(digest) {
+  const coverage = digest.search_from && digest.search_to
+    ? `Coverage: ${fmtReadable(digest.search_from)} – ${fmtReadable(digest.search_to)}`
+    : '';
   const lines = [
     `BRAND MONITOR — ${digest.company}`,
-    `${digest.timezone_label || digest.date} | Model: ${digest.model_used}`,
+    `${digest.timezone_label || fmtReadable(digest.date) || digest.date} | Model: ${digest.model_used}`,
+    coverage,
     '',
     '--- NEWS ---',
     ...(digest.news || []).map(n => `[${n.sentiment}] ${n.title}\n${n.url}`),
@@ -132,7 +150,10 @@ export async function sendDigestEmail(digest, toEmail) {
     }
 
     const crisisPrefix = digest.crisis_flag?.triggered ? '🚨 CRISIS ALERT — ' : '';
-    const subject = `${crisisPrefix}${digest.company} Brand Digest · ${digest.timezone_label || digest.date}`;
+    const rangeLabel  = digest.search_from && digest.search_to
+      ? ` · ${fmtReadable(digest.search_from)} – ${fmtReadable(digest.search_to)}`
+      : '';
+    const subject = `${crisisPrefix}${digest.company} Brand Digest · ${digest.timezone_label || digest.date}${rangeLabel}`;
 
     const { data, error } = await getResend().emails.send({
       from: process.env.RESEND_FROM || 'BrandMonitor <onboarding@resend.dev>',

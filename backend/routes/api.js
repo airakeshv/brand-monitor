@@ -106,6 +106,10 @@ router.post('/run-now', async (req, res) => {
     if (date_from && date_to) send(`Searching news from ${date_from} to ${date_to}…`);
     const { id, digest } = await runDigest(company, settings, send);
 
+    // attach date range to digest so email template can show coverage period
+    if (date_from) digest.search_from = date_from;
+    if (date_to)   digest.search_to   = date_to;
+
     const deliveryResults = {};
     if (settings.email) {
       send('Sending email…');

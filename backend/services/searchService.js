@@ -36,17 +36,33 @@ function toTbs(lookback = '7d', dateFrom = null, dateTo = null) {
   return 'qdr:w';
 }
 
+// standard India news sites (recent lookback — searched per-site for max coverage)
+const INDIA_SITES_STANDARD = [
+  'site:timesofindia.com',
+  'site:economictimes.com',
+  'site:hindustantimes.com',
+  'site:moneycontrol.com',
+  'site:ndtv.com',
+  'site:livemint.com',
+  'site:business-standard.com',
+];
+
+// combined site filter for date-range queries
+const INDIA_SITES_COMBINED =
+  'site:timesofindia.com OR site:economictimes.com OR site:hindustantimes.com OR ' +
+  'site:moneycontrol.com OR site:ndtv.com OR site:livemint.com OR site:business-standard.com OR ' +
+  'site:thehindu.com OR site:financialexpress.com OR site:businesstoday.in';
+
 // search India-specific news sources
 export async function searchIndiaNews(company, tbs = 'qdr:w') {
-  const sites = [
-    'site:timesofindia.com',
-    'site:economictimes.com',
-    'site:hindustantimes.com',
-    'site:moneycontrol.com',
-    'site:ndtv.com',
-  ];
+  // for custom date ranges: single combined query returns more unique results
+  if (tbs.startsWith('cdr:')) {
+    const results = await serperSearch(`${company} (${INDIA_SITES_COMBINED})`, { tbs, num: 20 });
+    return results.map(r => ({ ...r, source_category: 'india_news' }));
+  }
+  // for standard recent lookback: per-site queries give best recent coverage
   const results = await Promise.all(
-    sites.map(site =>
+    INDIA_SITES_STANDARD.map(site =>
       serperSearch(`${company} ${site}`, { tbs }).then(items =>
         items.map(r => ({ ...r, source_category: 'india_news' }))
       )
@@ -55,9 +71,11 @@ export async function searchIndiaNews(company, tbs = 'qdr:w') {
   return results.flat();
 }
 
-// search global news (Reuters, BBC, Bloomberg)
+// search global news (Reuters, BBC, Bloomberg, FT, WSJ)
 export async function searchGlobalNews(company, tbs = 'qdr:w') {
-  const results = await serperSearch(`${company} site:reuters.com OR site:bbc.com OR site:bloomberg.com`, { tbs });
+  const sites = 'site:reuters.com OR site:bbc.com OR site:bloomberg.com OR site:ft.com OR site:wsj.com';
+  const num   = tbs.startsWith('cdr:') ? 20 : 10;
+  const results = await serperSearch(`${company} (${sites})`, { tbs, num });
   return results.map(r => ({ ...r, source_category: 'global_news' }));
 }
 
