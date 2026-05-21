@@ -383,6 +383,11 @@ function ScheduleTab({ s, set, onActivate, onStop, schedMsg }) {
   const today    = new Date().toISOString().slice(0, 10);
   const isPaused = !!(s.pause_from && s.pause_to && today >= s.pause_from && today <= s.pause_to);
 
+  const freq          = s.frequency || 'daily';
+  const freqLabel     = { daily:'Every day', weekdays:'Mon–Fri', weekly:'Every Monday', monthly:'1st of each month' }[freq] || 'Every day';
+  const lookbackLabel = { '1d':'yesterday only', '7d':'last 7 days', '30d':'last 30 days' }[s.news_lookback || '7d'] || 'last 7 days';
+  const channelList   = [s.email && 'Email', s.whatsapp && 'WhatsApp', s.slack_webhook && 'Slack'].filter(Boolean).join(', ');
+
   return (
     <div>
 
@@ -427,21 +432,50 @@ function ScheduleTab({ s, set, onActivate, onStop, schedMsg }) {
         </TSelect>
       </Field>
 
-      <Field label="Frequency">
-        <TSelect value={s.frequency||'daily'} onChange={v=>set({...s,frequency:v})}>
-          <option value="daily">Daily (every day)</option>
-          <option value="weekdays">Weekdays only (Mon–Fri)</option>
+      <Field label="Frequency" hint="Controls when the automatic email fires and how much news it covers.">
+        <TSelect value={s.frequency||'daily'} onChange={v => set({
+          ...s,
+          frequency: v,
+          news_lookback: { daily:'1d', weekdays:'1d', weekly:'7d', monthly:'30d' }[v] || s.news_lookback,
+        })}>
+          <option value="daily">Daily — every day</option>
+          <option value="weekdays">Weekdays — Mon to Fri</option>
+          <option value="weekly">Weekly — every Monday</option>
+          <option value="monthly">Monthly — 1st of each month</option>
         </TSelect>
       </Field>
 
-      {/* News lookback period */}
-      <Field label="News Lookback Period" hint="How far back to search for news when generating a digest.">
+      {/* News lookback — auto-set when frequency changes; can be overridden */}
+      <Field label="News Lookback Period" hint="Auto-matched to frequency above. Change here to override.">
         <TSelect value={s.news_lookback||'7d'} onChange={v=>set({...s,news_lookback:v})}>
-          <option value="1d">Last 24 hours</option>
-          <option value="7d">Last 7 days (recommended)</option>
-          <option value="30d">Last 30 days</option>
+          <option value="1d">Last 24 hours — for Daily / Weekdays</option>
+          <option value="7d">Last 7 days — for Weekly</option>
+          <option value="30d">Last 30 days — for Monthly</option>
         </TSelect>
       </Field>
+
+      {/* schedule preview — shows exactly what will happen */}
+      <div style={{ background:'rgba(91,99,235,0.08)', border:'1px solid rgba(91,99,235,0.25)',
+        borderRadius:10, padding:'14px 18px', marginBottom:4 }}>
+        <div style={{ color:'#5B63EB', fontSize:11, fontWeight:700, letterSpacing:'0.06em',
+          textTransform:'uppercase', marginBottom:10 }}>Schedule Preview</div>
+        <div style={{ fontSize:13, lineHeight:'1.9', color:'#B4B4B4' }}>
+          <div>
+            <span style={{ color:'#FFFFFF', fontWeight:600 }}>Fires: </span>
+            {freqLabel} at {hour}:{minute} {period} ({(s.timezone||'Asia/Kolkata').replace(/_/g,' ')})
+          </div>
+          <div>
+            <span style={{ color:'#FFFFFF', fontWeight:600 }}>Searches: </span>
+            {lookbackLabel} of news
+          </div>
+          <div>
+            <span style={{ color:'#FFFFFF', fontWeight:600 }}>Delivers to: </span>
+            {channelList
+              ? channelList
+              : <span style={{ color:'#ef4444' }}>no channels — configure in Delivery tab</span>}
+          </div>
+        </div>
+      </div>
 
       {/* test email + custom date-range run */}
       <div style={{ marginTop:24, display:'flex', flexDirection:'column', gap:12 }}>

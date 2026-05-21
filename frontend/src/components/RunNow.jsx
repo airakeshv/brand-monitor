@@ -3,7 +3,7 @@ import { useState } from 'react';
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 // streams SSE from /api/run-now, calls onDigest when done
-export default function RunNow({ company, onDigest }) {
+export default function RunNow({ company, dateFrom, dateTo, onDigest }) {
   const [state, setState] = useState('idle'); // idle | running | done | error
   const [log,   setLog]   = useState([]);
   const [err,   setErr]   = useState('');
@@ -18,7 +18,11 @@ export default function RunNow({ company, onDigest }) {
       const res = await fetch(`${API}/api/run-now`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ company: company.trim() }),
+        body: JSON.stringify({
+          company: company.trim(),
+          ...(dateFrom && { date_from: dateFrom }),
+          ...(dateTo   && { date_to:   dateTo   }),
+        }),
       });
 
       if (!res.ok) {

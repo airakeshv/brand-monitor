@@ -8,7 +8,7 @@ export function buildDigestPrompt(company, results, settings = {}) {
   const language = settings.digest_language || 'English';
 
   const resultsText = results
-    .slice(0, 40)
+    .slice(0, 60)
     .map(r => `[${r.source_category?.toUpperCase() || 'NEWS'}] ${r.title || ''} — ${r.snippet || ''} (${r.link || r.url || ''})`)
     .join('\n');
 
@@ -41,7 +41,7 @@ Return ONLY valid JSON matching this exact schema — no markdown, no explanatio
 }
 
 Rules:
-- Include 3–5 news items, 2–3 social items, all reviews found
+- Include ALL relevant news items up to 15 (do not summarise or drop articles — list every distinct story found), 3–5 social items, all reviews found
 - Sentiment must be one of: positive, neutral, negative, mixed, strongly_positive, strongly_negative
 - Flag crisis_flag.triggered = true if you see fraud, lawsuit, scam, data breach, or viral negative coverage
 - Extract top 5–8 keywords from all results combined

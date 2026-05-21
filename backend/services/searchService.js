@@ -58,15 +58,11 @@ const INDIA_SITES_COMBINED =
 
 // search India-specific news sources
 export async function searchIndiaNews(company, tbs = 'qdr:w') {
-  // for custom date ranges: single combined query returns more unique results
-  if (tbs.startsWith('cdr:')) {
-    const results = await serperSearch(`${company} (${INDIA_SITES_COMBINED})`, { tbs, num: 20 });
-    return results.map(r => ({ ...r, source_category: 'india_news' }));
-  }
-  // for standard recent lookback: per-site queries give best recent coverage
+  // per-site queries — 10 results per site = up to 100 total
+  // no quotes: site: filter provides noise control; quoting "SriCity" would miss "Sri City" (two-word) articles
   const results = await Promise.all(
     INDIA_SITES_STANDARD.map(site =>
-      serperSearch(`${company} ${site}`, { tbs }).then(items =>
+      serperSearch(`${company} ${site}`, { tbs, num: 10 }).then(items =>
         items.map(r => ({ ...r, source_category: 'india_news' }))
       )
     )
@@ -139,10 +135,19 @@ export async function searchLinkedIn(company) {
 
 // catch-all: finds coverage from any outlet not in the site-specific lists
 export async function searchGeneralNews(company, tbs = 'qdr:w') {
-  const num = tbs.startsWith('cdr:') ? 20 : 10;
+  if (tbs.startsWith('cdr:')) {
+    // for date ranges: no content-type filter — catches investment/expansion/launch articles
+    // that don't use words like "news" or "announcement" in their headline
+    const results = await serperSearch(
+      `"${company}" -site:glassdoor.com -site:g2.com -site:trustpilot.com -site:reddit.com`,
+      { tbs, num: 50 }
+    );
+    return results.map(r => ({ ...r, source_category: 'india_news' }));
+  }
+  // for recent lookback: content filter reduces noise from job boards / reviews
   const results = await serperSearch(
     `"${company}" (news OR press release OR announcement) -site:glassdoor.com -site:g2.com -site:trustpilot.com`,
-    { tbs, num }
+    { tbs, num: 10 }
   );
   return results.map(r => ({ ...r, source_category: 'india_news' }));
 }
