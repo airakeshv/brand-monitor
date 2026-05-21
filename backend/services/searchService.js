@@ -45,6 +45,9 @@ const INDIA_SITES_STANDARD = [
   'site:ndtv.com',
   'site:livemint.com',
   'site:business-standard.com',
+  'site:thehindu.com',
+  'site:financialexpress.com',
+  'site:businesstoday.in',
 ];
 
 // combined site filter for date-range queries
@@ -134,6 +137,16 @@ export async function searchLinkedIn(company) {
   return results.map(r => ({ ...r, source: 'LinkedIn', source_category: 'social' }));
 }
 
+// catch-all: finds coverage from any outlet not in the site-specific lists
+export async function searchGeneralNews(company, tbs = 'qdr:w') {
+  const num = tbs.startsWith('cdr:') ? 20 : 10;
+  const results = await serperSearch(
+    `"${company}" (news OR press release OR announcement) -site:glassdoor.com -site:g2.com -site:trustpilot.com`,
+    { tbs, num }
+  );
+  return results.map(r => ({ ...r, source_category: 'india_news' }));
+}
+
 // search X/Twitter — direct site: search + news articles that quote/reference tweets
 // Note: X.com blocks most Google indexing; official Twitter API needed for real-time coverage
 export async function searchTwitter(company) {
@@ -158,6 +171,7 @@ export async function searchAll(company, settings = {}) {
 
   if (enabled.india_news  !== false) tasks.push(searchIndiaNews(company, tbs));
   if (enabled.global_news !== false) tasks.push(searchGlobalNews(company, tbs));
+  tasks.push(searchGeneralNews(company, tbs)); // always run — catches outlets outside site lists
   if (enabled.reddit      !== false) tasks.push(searchReddit(company));
   if (enabled.reviews     !== false) tasks.push(searchReviews(company));
   if (enabled.twitter     !== false) tasks.push(searchTwitter(company));

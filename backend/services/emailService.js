@@ -79,7 +79,7 @@ function buildHtml(digest) {
           <div style="color:#FFFFFF;font-size:22px;font-weight:700">Brand<span style="color:#fff">Monitor</span></div>
           <div style="color:rgba(255,255,255,0.9);font-size:16px;font-weight:600;margin-top:6px">${digest.company}</div>
           <div style="color:rgba(255,255,255,0.8);font-size:13px;margin-top:4px">
-            📅 ${digest.timezone_label || fmtReadable(digest.date) || digest.date}
+            📅 ${fmtReadable(digest.date) || digest.date}${digest.timezone_label ? ' · ' + digest.timezone_label : ''}
           </div>
           ${digest.search_from && digest.search_to
             ? `<div style="background:rgba(255,255,255,0.18);border-radius:8px;padding:7px 14px;margin-top:10px;display:inline-block">
@@ -126,7 +126,7 @@ function buildText(digest) {
     : '';
   const lines = [
     `BRAND MONITOR — ${digest.company}`,
-    `${digest.timezone_label || fmtReadable(digest.date) || digest.date} | Model: ${digest.model_used}`,
+    `${fmtReadable(digest.date) || digest.date}${digest.timezone_label ? ' · ' + digest.timezone_label : ''} | Model: ${digest.model_used}`,
     coverage,
     '',
     '--- NEWS ---',
@@ -153,7 +153,7 @@ export async function sendDigestEmail(digest, toEmail) {
     const rangeLabel  = digest.search_from && digest.search_to
       ? ` · ${fmtReadable(digest.search_from)} – ${fmtReadable(digest.search_to)}`
       : '';
-    const subject = `${crisisPrefix}${digest.company} Brand Digest · ${digest.timezone_label || digest.date}${rangeLabel}`;
+    const subject = `${crisisPrefix}${digest.company} Brand Digest · ${fmtReadable(digest.date) || digest.date}${digest.timezone_label ? ' ' + digest.timezone_label : ''}${rangeLabel}`;
 
     const { data, error } = await getResend().emails.send({
       from: process.env.RESEND_FROM || 'BrandMonitor <onboarding@resend.dev>',
