@@ -2,17 +2,141 @@ import { useState } from 'react';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
+const BADGE = {
+  news:   { bg: '#1e3a5f', color: '#3B9EFF',  label: 'News'   },
+  social: { bg: '#2e1b4a', color: '#A855F7',  label: 'Social' },
+  review: { bg: '#1a3a2a', color: '#22c55e',  label: 'Review' },
+};
+
+// coloured pill for source category
+function SourceBadge({ type }) {
+  const s = BADGE[type] || { bg: '#2A3858', color: '#B4B4B4', label: type };
+  return (
+    <span style={{ background: s.bg, color: s.color, fontSize: 10, fontWeight: 700,
+      padding: '2px 7px', borderRadius: 4, textTransform: 'uppercase', letterSpacing: 0.5,
+      whiteSpace: 'nowrap', flexShrink: 0 }}>
+      {s.label}
+    </span>
+  );
+}
+
+// one news / social row
+function ResultRow({ item, type }) {
+  const sentColor = item.sentiment === 'positive' ? '#22c55e'
+    : item.sentiment === 'negative' ? '#ef4444' : '#6B7A99';
+  return (
+    <div style={{ display: 'flex', gap: 8, padding: '8px 0', borderBottom: '1px solid #1e2a44' }}>
+      <SourceBadge type={type} />
+      <div style={{ minWidth: 0 }}>
+        {item.url
+          ? <a href={item.url} target="_blank" rel="noreferrer"
+              style={{ color: '#E2E8F0', fontSize: 13, fontWeight: 600, textDecoration: 'none' }}>
+              {item.title}
+            </a>
+          : <span style={{ color: '#E2E8F0', fontSize: 13, fontWeight: 600 }}>{item.title}</span>}
+        {item.snippet && <p style={{ color: '#7A8BAA', fontSize: 12, margin: '3px 0 0', lineHeight: 1.4 }}>{item.snippet}</p>}
+        <div style={{ display: 'flex', gap: 8, marginTop: 3 }}>
+          <span style={{ color: '#4A5A7A', fontSize: 11 }}>{item.source}</span>
+          {item.sentiment && <span style={{ color: sentColor, fontSize: 11 }}>{item.sentiment}</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// full digest rendered below the button
+function DigestDisplay({ digest }) {
+  if (!digest) return null;
+  const { news = [], social = [], reviews = [], crisis_flag, watch_out, keywords = [], model_used, timezone_label, date } = digest;
+
+  return (
+    <div style={{ marginTop: 24, background: '#111830', borderRadius: 12, padding: 20, border: '1px solid #2A3858' }}>
+      {crisis_flag?.triggered && (
+        <div style={{ background: '#450a0a', border: '1px solid #ef4444', borderRadius: 8,
+          padding: '10px 14px', marginBottom: 16 }}>
+          <span style={{ color: '#ef4444', fontWeight: 700, fontSize: 13 }}>⚠ Crisis Alert: </span>
+          <span style={{ color: '#fca5a5', fontSize: 13 }}>{crisis_flag.reason}</span>
+        </div>
+      )}
+      {watch_out && (
+        <div style={{ background: '#1c1a2e', borderRadius: 8, padding: '8px 14px',
+          marginBottom: 16, fontSize: 13, color: '#c4b5fd' }}>
+          <strong style={{ color: '#A855F7' }}>Watch Out: </strong>{watch_out}
+        </div>
+      )}
+      {keywords.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 16 }}>
+          {keywords.slice(0, 10).map(k => (
+            <span key={k} style={{ background: '#1e2a44', color: '#7B9CCC', fontSize: 11,
+              padding: '2px 8px', borderRadius: 4 }}>{k}</span>
+          ))}
+        </div>
+      )}
+      {news.length > 0 && (
+        <section style={{ marginBottom: 16 }}>
+          <h4 style={{ color: '#3B9EFF', fontSize: 12, fontWeight: 700, marginBottom: 8,
+            textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 8px' }}>
+            News ({news.length})
+          </h4>
+          {news.map((item, i) => <ResultRow key={i} item={item} type="news" />)}
+        </section>
+      )}
+      {social.length > 0 && (
+        <section style={{ marginBottom: 16 }}>
+          <h4 style={{ color: '#A855F7', fontSize: 12, fontWeight: 700,
+            textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 8px' }}>
+            Social ({social.length})
+          </h4>
+          {social.map((item, i) => <ResultRow key={i} item={item} type="social" />)}
+        </section>
+      )}
+      {reviews.length > 0 && (
+        <section>
+          <h4 style={{ color: '#22c55e', fontSize: 12, fontWeight: 700,
+            textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 8px' }}>
+            Reviews ({reviews.length})
+          </h4>
+          {reviews.map((item, i) => (
+            <div key={i} style={{ display: 'flex', gap: 8, padding: '8px 0', borderBottom: '1px solid #1e2a44' }}>
+              <SourceBadge type="review" />
+              <div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <span style={{ color: '#E2E8F0', fontSize: 13, fontWeight: 600 }}>{item.platform}</span>
+                  {item.rating > 0 && (
+                    <span style={{ color: '#fbbf24', fontSize: 12 }}>{'★'.repeat(Math.min(5, Math.round(item.rating)))}</span>
+                  )}
+                  {item.urgency && (
+                    <span style={{ color: item.urgency === 'high' ? '#ef4444' : item.urgency === 'medium' ? '#f97316' : '#22c55e', fontSize: 11 }}>
+                      {item.urgency}
+                    </span>
+                  )}
+                </div>
+                {item.excerpt && <p style={{ color: '#7A8BAA', fontSize: 12, margin: '4px 0 0' }}>{item.excerpt}</p>}
+              </div>
+            </div>
+          ))}
+        </section>
+      )}
+      <p style={{ marginTop: 14, color: '#4A5A7A', fontSize: 11 }}>
+        {model_used} · {timezone_label || date}
+      </p>
+    </div>
+  );
+}
+
 // streams SSE from /api/run-now, calls onDigest when done
 export default function RunNow({ company, dateFrom, dateTo, onDigest }) {
-  const [state, setState] = useState('idle'); // idle | running | done | error
-  const [log,   setLog]   = useState([]);
-  const [err,   setErr]   = useState('');
+  const [state,  setState]  = useState('idle'); // idle | running | done | error
+  const [log,    setLog]    = useState([]);
+  const [err,    setErr]    = useState('');
+  const [digest, setDigest] = useState(null);
 
   const handleRun = async () => {
     if (!company?.trim()) return;
     setState('running');
     setLog([]);
     setErr('');
+    setDigest(null);
 
     try {
       const res = await fetch(`${API}/api/run-now`, {
@@ -56,6 +180,7 @@ export default function RunNow({ company, dateFrom, dateTo, onDigest }) {
           }
           if (payload.done) {
             setState('done');
+            setDigest(payload.digest);
             onDigest?.(payload.digest, payload.delivery);
           }
         }
@@ -127,6 +252,8 @@ export default function RunNow({ company, dateFrom, dateTo, onDigest }) {
           </button>
         </div>
       )}
+
+      <DigestDisplay digest={digest} />
 
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>

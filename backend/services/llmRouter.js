@@ -93,3 +93,63 @@ async function callPerplexity(apiKey, prompt) {
   if (!text) throw new Error('Perplexity returned empty response');
   return { text, model_used: 'perplexity-api' };
 }
+
+// build DigestSchema prompt from search results and call the configured LLM
+export async function generateDigest(company, searchResults, settings = {}) {
+  const model  = settings.llm_model   || 'gemini-2.5-flash';
+  const apiKey = settings.llm_api_key || '';
+  const lang   = settings.digest_language || 'English';
+  const tz     = settings.timezone || 'Asia/Kolkata';
+  const today  = new Date().toISOString().split('T')[0];
+
+  // cap at 60 results to stay within token limits
+  const items = searchResults.slice(0, 60).map(r => ({
+    title:    r.title    || r.name || '',
+    source:   r.source   || r.displayLink || '',
+    url:      r.link     || r.url || '',
+    snippet:  r.snippet  || '',
+    category: r.source_category || 'news',
+  }));
+
+  const prompt = `You are a brand intelligence analyst. Analyze these search results for "${company}" and return a single JSON object. Respond in ${lang}.
+
+Search results (${items.length} items):
+${JSON.stringify(items)}
+
+Return ONLY valid JSON — no markdown, no explanation — matching this exact schema:
+{
+  "company": "${company}",
+  "date": "${today}",
+  "timezone_label": "current local time in ${tz}",
+  "model_used": "${model}",
+  "news": [{"title":"","source":"","url":"","sentiment":"positive|negative|neutral","emotion":"","snippet":""}],
+  "social": [{"title":"","source":"","url":"","sentiment":"positive|negative|neutral","snippet":""}],
+  "reviews": [{"platform":"","rating":0,"excerpt":"","urgency":"low|medium|high","draft_response":""}],
+  "ai_visibility": [{"engine":"","summary":"","accuracy_flag":true}],
+  "competitor_signals": [{"company":"","signal_type":"","detail":""}],
+  "corporate_events": [{"type":"","headline":"","implication":""}],
+  "keywords": [],
+  "sov": {"company_pct": 0, "competitors": []},
+  "sparkline": [0,0,0,0,0,0,0],
+  "crisis_flag": {"triggered": false, "reason": ""},
+  "watch_out": null
+}
+
+Rules:
+- news: up to 10 items from india_news / global_news categories; include sentiment per article
+- social: up to 5 items from social / reddit / twitter categories
+- reviews: up to 5 items from review category; urgency = high if rating ≤ 2
+- keywords: top 8 brand-related terms from the results
+- sov.company_pct: estimated 0-100 share of voice vs competitors
+- sparkline: 7 daily sentiment scores (-1 to 1), oldest first
+- crisis_flag.triggered = true if >30% of news is negative or there is a PR crisis
+- watch_out: one-sentence biggest risk, or null if nothing notable`;
+
+  const { text, model_used } = await routeLLM(model, apiKey, prompt);
+
+  // strip markdown code fences if LLM wraps output
+  const cleaned = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+  const digest  = JSON.parse(cleaned);
+  digest.model_used = model_used;
+  return digest;
+}
