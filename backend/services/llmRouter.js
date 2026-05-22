@@ -1,11 +1,31 @@
 import axios from 'axios';
 
+// retry an async fn up to maxRetries times on 503/429, with exponential backoff
+async function withRetry(fn, maxRetries = 2) {
+  let lastErr;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const status = err.response?.status;
+      if ((status === 503 || status === 429) && attempt < maxRetries) {
+        const wait = (attempt + 1) * 2000;
+        await new Promise(r => setTimeout(r, wait));
+        lastErr = err;
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastErr;
+}
+
 // route a prompt to the chosen LLM, returns raw text response
 export async function routeLLM(model, apiKey, prompt) {
   try {
     switch (model) {
       case 'gemini-2.5-flash':
-        return await callGemini(apiKey || process.env.GEMINI_API_KEY, prompt);
+        return await withRetry(() => callGemini(apiKey || process.env.GEMINI_API_KEY, prompt));
       case 'gpt-4o-mini':
         return await callOpenAI(apiKey || process.env.OPENAI_API_KEY, prompt);
       case 'claude-sonnet-4-6':
@@ -16,10 +36,14 @@ export async function routeLLM(model, apiKey, prompt) {
         throw new Error(`Unsupported model: ${model}`);
     }
   } catch (err) {
-    // fallback to Gemini free tier on any error
+    // fallback order: try OpenAI first (reliable), then Gemini
+    if (model !== 'gpt-4o-mini' && process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY !== 'add_later') {
+      console.error(`Model ${model} failed (${err.message}), falling back to OpenAI`);
+      return await callOpenAI(process.env.OPENAI_API_KEY, prompt);
+    }
     if (model !== 'gemini-2.5-flash') {
       console.error(`Model ${model} failed (${err.message}), falling back to Gemini`);
-      return await callGemini(process.env.GEMINI_API_KEY, prompt, true);
+      return await withRetry(() => callGemini(process.env.GEMINI_API_KEY, prompt, true));
     }
     throw err;
   }
