@@ -16,7 +16,7 @@ export async function runDigest(company, settings = {}, onProgress = null) {
 
   onProgress?.(`Found ${filtered.length} results. Generating digest…`);
   const prompt   = buildDigestPrompt(company, filtered, settings);
-  const { text, model_used } = await routeLLM(model, apiKey, prompt);
+  const { text, model_used } = await routeLLM(model, apiKey, prompt, { company, results: filtered });
 
   onProgress?.('Validating digest…');
   const digest   = parseAndValidate(text, model_used);

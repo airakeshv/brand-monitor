@@ -20,8 +20,61 @@ async function withRetry(fn, maxRetries = 2) {
   throw lastErr;
 }
 
-// route a prompt to the chosen LLM, returns raw text response
-export async function routeLLM(model, apiKey, prompt) {
+// build a rule-based digest from raw search results when all LLMs are unavailable
+export function buildBasicDigest(company, results = []) {
+  const today = new Date().toISOString().split('T')[0];
+  const newsCategories = new Set(['india_news', 'global_news', 'news']);
+
+  const news = results
+    .filter(r => newsCategories.has(r.source_category) || !r.source_category)
+    .slice(0, 5)
+    .map(r => ({
+      title: r.title || '',
+      source: r.source || r.displayLink || '',
+      url: r.link || r.url || '',
+      sentiment: 'neutral',
+      emotion: '',
+      snippet: r.snippet || '',
+    }));
+
+  const social = results
+    .filter(r => r.source_category === 'social')
+    .slice(0, 3)
+    .map(r => ({
+      title: r.title || '',
+      source: r.source || '',
+      url: r.link || r.url || '',
+      sentiment: 'neutral',
+      snippet: r.snippet || '',
+    }));
+
+  const digest = {
+    company,
+    date: today,
+    timezone_label: 'UTC',
+    model_used: 'rule-based (LLM unavailable)',
+    news,
+    social,
+    reviews: [],
+    ai_visibility: [],
+    competitor_signals: [],
+    corporate_events: [],
+    keywords: [],
+    sov: { company_pct: 0, competitors: [] },
+    sparkline: [0, 0, 0, 0, 0, 0, 0],
+    crisis_flag: { triggered: false, reason: '' },
+    watch_out: 'AI analysis unavailable — showing raw search results only. LLM services were temporarily down.',
+  };
+
+  return { text: JSON.stringify(digest), model_used: 'rule-based (LLM unavailable)' };
+}
+
+// route a prompt to the chosen LLM — waterfall: primary → OpenAI → Gemini → rule-based
+// context = { company, results } is used only for the rule-based last resort
+export async function routeLLM(model, apiKey, prompt, context = {}) {
+  let primaryErr;
+
+  // step 1 — try primary model
   try {
     switch (model) {
       case 'gemini-2.5-flash':
@@ -36,17 +89,37 @@ export async function routeLLM(model, apiKey, prompt) {
         throw new Error(`Unsupported model: ${model}`);
     }
   } catch (err) {
-    // fallback order: try OpenAI first (reliable), then Gemini
-    if (model !== 'gpt-4o-mini' && process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY !== 'add_later') {
-      console.error(`Model ${model} failed (${err.message}), falling back to OpenAI`);
-      return await callOpenAI(process.env.OPENAI_API_KEY, prompt);
-    }
-    if (model !== 'gemini-2.5-flash') {
-      console.error(`Model ${model} failed (${err.message}), falling back to Gemini`);
-      return await withRetry(() => callGemini(process.env.GEMINI_API_KEY, prompt, true));
-    }
-    throw err;
+    primaryErr = err;
+    console.error(`Primary model ${model} failed: ${err.message}`);
   }
+
+  // step 2 — fallback to OpenAI (if available and not already tried)
+  if (model !== 'gpt-4o-mini' && process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY !== 'add_later') {
+    try {
+      console.error('Falling back to OpenAI gpt-4o-mini');
+      return await callOpenAI(process.env.OPENAI_API_KEY, prompt);
+    } catch (err) {
+      console.error(`OpenAI fallback failed: ${err.message}`);
+    }
+  }
+
+  // step 3 — fallback to Gemini (if available and not already tried)
+  if (model !== 'gemini-2.5-flash' && process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'add_later') {
+    try {
+      console.error('Falling back to Gemini');
+      return await withRetry(() => callGemini(process.env.GEMINI_API_KEY, prompt, true));
+    } catch (err) {
+      console.error(`Gemini fallback failed: ${err.message}`);
+    }
+  }
+
+  // step 4 — rule-based digest from raw search results (never shows 503)
+  if (context.company && context.results?.length > 0) {
+    console.error('All LLMs unavailable — returning rule-based digest');
+    return buildBasicDigest(context.company, context.results);
+  }
+
+  throw primaryErr;
 }
 
 // Gemini 2.5 Flash via Google GenAI REST
