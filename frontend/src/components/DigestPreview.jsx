@@ -123,11 +123,15 @@ function Sparkline({ data = [] }) {
 export default function DigestPreview({ digest }) {
   if (!digest) return null;
 
-  const hasCrisis  = digest.crisis_flag?.triggered;
-  const hasNews    = digest.news?.length > 0;
-  const hasReviews = digest.reviews?.length > 0;
-  const hasSocial  = digest.social?.length > 0;
-  const hasKeywords = digest.keywords?.length > 0;
+  const hasCrisis   = digest.crisis_flag?.triggered;
+  const news        = (digest.news     || []).filter(n => n.title);
+  const social      = (digest.social   || []).filter(s => s.title);
+  const reviews     = (digest.reviews  || []).filter(r => r.excerpt || r.platform);
+  const keywords    = (digest.keywords || []).filter(Boolean);
+  const hasNews     = news.length > 0;
+  const hasSocial   = social.length > 0;
+  const hasReviews  = reviews.length > 0;
+  const hasKeywords = keywords.length > 0;
 
   return (
     <div style={{ background: '#111830', border: '1px solid #2A3858', borderRadius: 16, overflow: 'hidden' }}>
@@ -177,7 +181,7 @@ export default function DigestPreview({ digest }) {
         {hasNews && (
           <div style={{ marginBottom: 20 }}>
             <SectionLabel>News Highlights</SectionLabel>
-            {digest.news.map((n, i) => <NewsRow key={i} item={n} />)}
+            {news.map((n, i) => <NewsRow key={i} item={n} />)}
           </div>
         )}
 
@@ -185,7 +189,7 @@ export default function DigestPreview({ digest }) {
         {hasSocial && (
           <div style={{ marginBottom: 20 }}>
             <SectionLabel>Social Mentions</SectionLabel>
-            {digest.social.map((s, i) => <NewsRow key={i} item={s} />)}
+            {social.map((s, i) => <NewsRow key={i} item={s} />)}
           </div>
         )}
 
@@ -193,7 +197,7 @@ export default function DigestPreview({ digest }) {
         {hasReviews && (
           <div style={{ marginBottom: 20 }}>
             <SectionLabel>Review Alerts</SectionLabel>
-            {digest.reviews.map((r, i) => <ReviewRow key={i} item={r} />)}
+            {reviews.map((r, i) => <ReviewRow key={i} item={r} />)}
           </div>
         )}
 
@@ -202,7 +206,7 @@ export default function DigestPreview({ digest }) {
           <div style={{ marginBottom: 20 }}>
             <SectionLabel>Trending Keywords</SectionLabel>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {digest.keywords.map((k, i) => (
+              {keywords.map((k, i) => (
                 <span key={i} style={{
                   background: 'rgba(91,99,235,0.15)',
                   color: '#5B63EB',
