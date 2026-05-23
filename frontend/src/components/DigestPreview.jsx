@@ -40,17 +40,19 @@ function NewsRow({ item }) {
   return (
     <div style={{ padding: '10px 0', borderBottom: '1px solid #2A3858' }}>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
-        <SourceBadge source={item.source || 'news'} />
-        <span style={{
-          background: sentimentColor(item.sentiment),
-          color: '#0A0E27',
-          borderRadius: '999px',
-          padding: '2px 8px',
-          fontSize: 11,
-          fontWeight: 600,
-        }}>
-          {item.sentiment}
-        </span>
+        {item.source && <SourceBadge source={item.source} />}
+        {item.sentiment && (
+          <span style={{
+            background: sentimentColor(item.sentiment),
+            color: '#0A0E27',
+            borderRadius: '999px',
+            padding: '2px 8px',
+            fontSize: 11,
+            fontWeight: 600,
+          }}>
+            {item.sentiment}
+          </span>
+        )}
       </div>
       <div style={{ marginTop: 6 }}>
         <a href={item.url || '#'} target="_blank" rel="noreferrer"

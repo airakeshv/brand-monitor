@@ -11,7 +11,7 @@ const SOURCE_COLORS = {
   g2:             { bg: 'rgba(139,92,246,0.15)', color: '#8b5cf6', border: 'rgba(139,92,246,0.3)' },
   trustpilot:     { bg: 'rgba(0,182,122,0.15)',  color: '#00b67a', border: 'rgba(0,182,122,0.3)'  },
   twitter:        { bg: 'rgba(29,161,242,0.15)', color: '#1da1f2', border: 'rgba(29,161,242,0.3)' },
-  x:              { bg: 'rgba(255,255,255,0.1)', color: '#ffffff', border: 'rgba(255,255,255,0.2)' },
+  x:              { bg: 'rgba(29,161,242,0.15)', color: '#1da1f2', border: 'rgba(29,161,242,0.3)'  },
   youtube:        { bg: 'rgba(255,0,0,0.15)',    color: '#ff0000', border: 'rgba(255,0,0,0.3)'    },
   linkedin:       { bg: 'rgba(10,102,194,0.15)', color: '#0a66c2', border: 'rgba(10,102,194,0.3)' },
 };
