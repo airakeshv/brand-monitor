@@ -66,8 +66,8 @@ function buildHtml(digest) {
     </tr>`).join('');
 
   const keywords = (digest.keywords || []).map(k =>
-    `<span style="background:rgba(91,99,235,0.15);color:#5B63EB;border:1px solid rgba(91,99,235,0.3);border-radius:999px;padding:3px 12px;font-size:12px;margin:3px;display:inline-block">${k}</span>`
-  ).join('');
+    `<span style="background:rgba(91,99,235,0.15);color:#5B63EB;border:1px solid rgba(91,99,235,0.3);border-radius:999px;padding:3px 12px;font-size:12px;white-space:nowrap;display:inline-block">${k}</span>`
+  ).join(' ');
 
   const crisisBanner = digest.crisis_flag?.triggered
     ? `<div style="background:rgba(239,68,68,0.15);border:1px solid #ef4444;border-radius:10px;padding:12px 16px;margin-bottom:24px">
