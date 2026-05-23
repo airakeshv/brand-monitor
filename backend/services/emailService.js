@@ -45,6 +45,16 @@ function buildHtml(digest) {
       </td>
     </tr>`).join('');
 
+  const socialRows = (digest.social || []).filter(s => s.title).map(s => `
+    <tr>
+      <td style="padding:10px 0;border-bottom:1px solid #2A3858">
+        <span style="background:rgba(168,85,247,0.15);color:#a855f7;border:1px solid rgba(168,85,247,0.3);border-radius:999px;padding:2px 10px;font-size:11px;font-weight:600;text-transform:uppercase">${s.source || ''}</span>
+        ${s.sentiment ? `<span style="margin-left:8px;background:${sentimentColor(s.sentiment)};color:#0A0E27;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:600">${s.sentiment}</span>` : ''}
+        <div style="margin-top:6px"><a href="${s.url||'#'}" style="color:#FFFFFF;font-weight:600;text-decoration:none">${s.title||''}</a></div>
+        <div style="color:#B4B4B4;font-size:13px;margin-top:4px">${s.snippet||''}</div>
+      </td>
+    </tr>`).join('');
+
   const reviewRows = (digest.reviews || []).map(r => `
     <tr>
       <td style="padding:10px 0;border-bottom:1px solid #2A3858;border-left:3px solid ${urgencyColor(r.urgency)};padding-left:12px">
@@ -99,6 +109,10 @@ function buildHtml(digest) {
           ${newsRows ? `<div style="color:#E91E8C;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:8px">News Highlights</div>
           <table width="100%" cellpadding="0" cellspacing="0">${newsRows}</table>` : ''}
 
+          <!-- Social -->
+          ${socialRows ? `<div style="color:#E91E8C;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin:20px 0 8px">Social Mentions</div>
+          <table width="100%" cellpadding="0" cellspacing="0">${socialRows}</table>` : ''}
+
           <!-- Reviews -->
           ${reviewRows ? `<div style="color:#E91E8C;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin:20px 0 8px">Review Alerts</div>
           <table width="100%" cellpadding="0" cellspacing="0">${reviewRows}</table>` : ''}
@@ -134,6 +148,9 @@ function buildText(digest) {
     '',
     '--- NEWS ---',
     ...(digest.news || []).map(n => `[${n.sentiment}] ${n.title}\n${n.url}`),
+    '',
+    '--- SOCIAL ---',
+    ...(digest.social || []).filter(s => s.title).map(s => `[${s.sentiment}] ${s.title}\n${s.url}`),
     '',
     '--- REVIEWS ---',
     ...(digest.reviews || []).map(r => `[${r.urgency}] ${r.platform} ${r.rating}★\n"${r.excerpt}"\nSuggested: ${r.draft_response}`),
