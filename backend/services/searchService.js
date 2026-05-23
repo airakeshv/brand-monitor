@@ -157,6 +157,41 @@ export async function searchTwitter(company) {
   return [...socialItems, ...newsItems];
 }
 
+// known social media domains — results from these are always 'social'
+const SOCIAL_DOMAINS = new Set([
+  'instagram.com', 'facebook.com', 'fb.com',
+  'x.com', 'twitter.com', 'linkedin.com',
+  'threads.net', 'reddit.com', 'youtube.com', 'tiktok.com',
+]);
+
+// map messy social source strings (e.g. "Alok Jain - Instagram") to clean platform names
+function cleanSource(source = '', link = '') {
+  const s = source.toLowerCase();
+  const l = link.toLowerCase();
+  if (s.includes('instagram') || l.includes('instagram.com'))                         return 'Instagram';
+  if (s.includes('facebook')  || l.includes('facebook.com') || l.includes('fb.com'))  return 'Facebook';
+  if (s.includes('linkedin')  || l.includes('linkedin.com'))                          return 'LinkedIn';
+  if (s.includes('twitter')   || l.includes('twitter.com')  || l.includes('x.com'))   return 'X (formerly Twitter)';
+  if (s.includes('youtube')   || l.includes('youtube.com'))                           return 'YouTube';
+  if (s.includes('reddit')    || l.includes('reddit.com'))                            return 'Reddit';
+  try { return new URL(link).hostname.replace(/^www\./, '') || source; } catch { return source; }
+}
+
+// reclassify any result whose URL or source string belongs to a social platform
+function normalizeResult(result) {
+  const link = (result.link || result.url || '').toLowerCase();
+  const src  = (result.source || result.displayLink || '').toLowerCase();
+  const isSocial =
+    [...SOCIAL_DOMAINS].some(d => link.includes(d) || src.includes(d)) ||
+    ['instagram', 'facebook', 'twitter', 'linkedin', 'youtube'].some(p => src.includes(p));
+  if (!isSocial) return result;
+  return {
+    ...result,
+    source: cleanSource(result.source || result.displayLink || '', result.link || result.url || ''),
+    source_category: 'social',
+  };
+}
+
 // keep results where any meaningful word from the company name appears in title or first 100 chars of snippet
 function isRelevant(result, company) {
   const words   = company.toLowerCase().split(/\s+/).filter(w => w.length > 2);
@@ -181,5 +216,5 @@ export async function searchAll(company, settings = {}) {
   if (enabled.linkedin    !== false) tasks.push(searchLinkedIn(company));
 
   const allResults = await Promise.all(tasks);
-  return allResults.flat().filter(r => isRelevant(r, company));
+  return allResults.flat().map(normalizeResult).filter(r => isRelevant(r, company));
 }
