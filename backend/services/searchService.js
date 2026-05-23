@@ -146,16 +146,23 @@ export async function searchTwitter(company) {
     serperSearch(`"${company}" (tweeted OR "on twitter" OR "on X" OR tweet) -site:twitter.com -site:x.com`, { tbs: 'qdr:w', num: 8 }),
   ]);
   const seen = new Set();
-  return [...direct, ...newsRefs]
+  // direct x.com/twitter.com results → social
+  const socialItems = direct
     .filter(r => { if (seen.has(r.link)) return false; seen.add(r.link); return true; })
     .map(r => ({ ...r, source: 'X/Twitter', source_category: 'social' }));
+  // news articles that reference tweets → news (not social)
+  const newsItems = newsRefs
+    .filter(r => { if (seen.has(r.link)) return false; seen.add(r.link); return true; })
+    .map(r => ({ ...r, source_category: 'india_news' }));
+  return [...socialItems, ...newsItems];
 }
 
-// keep results where any meaningful word from the company name appears in title or snippet
+// keep results where any meaningful word from the company name appears in title or first 100 chars of snippet
 function isRelevant(result, company) {
-  const words = company.toLowerCase().split(/\s+/).filter(w => w.length > 2);
-  const text  = `${result.title || ''} ${result.snippet || ''}`.toLowerCase();
-  return words.some(w => text.includes(w));
+  const words   = company.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+  const title   = (result.title   || '').toLowerCase();
+  const snippet = (result.snippet || '').slice(0, 100).toLowerCase();
+  return words.some(w => title.includes(w) || snippet.includes(w));
 }
 
 // aggregate all sources based on enabled flags in settings
