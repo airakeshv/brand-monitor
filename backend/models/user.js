@@ -1,8 +1,44 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 
 const DB_PATH = process.env.DATABASE_PATH || './data/brand-monitor.db';
+
+// derive a 32-byte key from ENCRYPTION_KEY env var (or a safe dev fallback)
+function deriveKey() {
+  const raw = process.env.ENCRYPTION_KEY || 'brand-monitor-dev-key-change-in-prod';
+  return crypto.createHash('sha256').update(raw).digest();
+}
+
+// AES-256-GCM encrypt — returns iv:ciphertext:authTag (all hex), or '' if text is empty
+function encrypt(text) {
+  if (!text) return '';
+  const iv     = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv('aes-256-gcm', deriveKey(), iv);
+  const enc    = Buffer.concat([cipher.update(text, 'utf8'), cipher.final()]);
+  return [iv.toString('hex'), enc.toString('hex'), cipher.getAuthTag().toString('hex')].join(':');
+}
+
+// AES-256-GCM decrypt — returns plaintext, or '' on failure
+function decrypt(stored) {
+  if (!stored || !stored.includes(':')) return stored || '';
+  try {
+    const [ivHex, encHex, tagHex] = stored.split(':');
+    const decipher = crypto.createDecipheriv('aes-256-gcm', deriveKey(), Buffer.from(ivHex, 'hex'));
+    decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
+    return decipher.update(encHex, 'hex', 'utf8') + decipher.final('utf8');
+  } catch { return ''; }
+}
+
+// detect AES-256-GCM encrypted format: three colon-separated hex segments
+function isEncrypted(value) {
+  if (!value) return false;
+  const parts = value.split(':');
+  return parts.length === 3 && parts.every(p => /^[0-9a-f]+$/i.test(p));
+}
+
+const MASKED = '••••••••';
 
 let db;
 
@@ -56,36 +92,64 @@ export function initDB() {
   if (!row) {
     db.prepare('INSERT INTO settings (id) VALUES (1)').run();
   }
+
+  // startup guard: encrypt any plaintext llm_api_key still in the DB
+  const keyRow = db.prepare('SELECT llm_api_key FROM settings WHERE id = 1').get();
+  if (keyRow?.llm_api_key && !isEncrypted(keyRow.llm_api_key)) {
+    db.prepare('UPDATE settings SET llm_api_key = ? WHERE id = 1').run(encrypt(keyRow.llm_api_key));
+  }
 }
 
-// get the single user's settings
+// get the single user's settings — API key is masked for client safety
 export function getSettings() {
   const row = getDB().prepare('SELECT * FROM settings WHERE id = 1').get();
   return {
     ...row,
-    competitor_names: JSON.parse(row.competitor_names),
-    executive_names: JSON.parse(row.executive_names),
-    include_keywords: JSON.parse(row.include_keywords),
-    exclude_keywords: JSON.parse(row.exclude_keywords),
-    exclude_domains: JSON.parse(row.exclude_domains),
-    sources_enabled: JSON.parse(row.sources_enabled),
+    competitor_names:  JSON.parse(row.competitor_names),
+    executive_names:   JSON.parse(row.executive_names),
+    include_keywords:  JSON.parse(row.include_keywords),
+    exclude_keywords:  JSON.parse(row.exclude_keywords),
+    exclude_domains:   JSON.parse(row.exclude_domains),
+    sources_enabled:   JSON.parse(row.sources_enabled),
+    llm_api_key:       row.llm_api_key ? MASKED : '',
+    llm_api_key_set:   !!row.llm_api_key,
   };
 }
 
-// update settings fields (partial update supported)
+// get settings with the real decrypted API key — for internal service use only
+export function getSettingsInternal() {
+  const row = getDB().prepare('SELECT * FROM settings WHERE id = 1').get();
+  return {
+    ...row,
+    competitor_names: JSON.parse(row.competitor_names),
+    executive_names:  JSON.parse(row.executive_names),
+    include_keywords: JSON.parse(row.include_keywords),
+    exclude_keywords: JSON.parse(row.exclude_keywords),
+    exclude_domains:  JSON.parse(row.exclude_domains),
+    sources_enabled:  JSON.parse(row.sources_enabled),
+    llm_api_key:      decrypt(row.llm_api_key),
+  };
+}
+
+// update settings fields (partial update supported); AES-256 encrypts llm_api_key
 export function saveSettings(updates) {
-  const arrayFields = ['competitor_names', 'executive_names', 'include_keywords', 'exclude_keywords', 'exclude_domains'];
+  const arrayFields  = ['competitor_names', 'executive_names', 'include_keywords', 'exclude_keywords', 'exclude_domains'];
   const objectFields = ['sources_enabled'];
 
   const serialised = {};
   for (const [k, v] of Object.entries(updates)) {
-    if (arrayFields.includes(k) || objectFields.includes(k)) {
+    if (k === 'llm_api_key_set') continue; // read-only computed field — never store
+    if (k === 'llm_api_key') {
+      if (!v || v === MASKED) continue; // masked sentinel or blank → keep existing encrypted value
+      serialised[k] = encrypt(v);      // new key provided → encrypt before storing
+    } else if (arrayFields.includes(k) || objectFields.includes(k)) {
       serialised[k] = JSON.stringify(v);
     } else {
       serialised[k] = v;
     }
   }
 
+  if (Object.keys(serialised).length === 0) return;
   const cols = Object.keys(serialised).map(k => `${k} = @${k}`).join(', ');
   getDB().prepare(`UPDATE settings SET ${cols} WHERE id = 1`).run(serialised);
 }

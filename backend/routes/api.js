@@ -5,7 +5,7 @@ import { runDigest } from '../services/digestService.js';
 import { sendDigestEmail } from '../services/emailService.js';
 import { sendWhatsAppDigest } from '../services/whatsappService.js';
 import { sendSlackDigest } from '../services/slackService.js';
-import { getSettings, saveSettings } from '../models/user.js';
+import { getSettings, getSettingsInternal, saveSettings } from '../models/user.js';
 import { getHistory, getDigestById } from '../models/digest.js';
 import { scheduleDigest, stopSchedule } from '../scheduler/cronManager.js';
 
@@ -19,7 +19,7 @@ router.post('/search', async (req, res) => {
     const { company } = req.body;
     if (!company) return res.status(400).json({ error: 'company is required' });
 
-    const settings = getSettings();
+    const settings = getSettingsInternal();
     const raw = await searchAll(company, settings);
     const filtered = applyNoiseFilter(raw, settings);
 
@@ -36,7 +36,7 @@ router.post('/digest', async (req, res) => {
     const { company, model, apiKey } = req.body;
     if (!company) return res.status(400).json({ error: 'company is required' });
 
-    const settings = { ...getSettings(), ...(model && { llm_model: model }), ...(apiKey && { llm_api_key: apiKey }) };
+    const settings = { ...getSettingsInternal(), ...(model && { llm_model: model }), ...(apiKey && { llm_api_key: apiKey }) };
     const { id, digest } = await runDigest(company, settings);
 
     res.json({ id, digest });
@@ -55,15 +55,17 @@ router.get('/settings', (_req, res) => {
   }
 });
 
-// update settings
-router.put('/settings', (req, res) => {
+// update settings (PUT or POST — both accepted)
+function handleSaveSettings(req, res) {
   try {
     saveSettings(req.body);
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: 'Failed to save settings' });
   }
-});
+}
+router.put('/settings',  handleSaveSettings);
+router.post('/settings', handleSaveSettings);
 
 // get digest history
 router.get('/history', (_req, res) => {
@@ -97,7 +99,7 @@ router.post('/run-now', async (req, res) => {
   const send = (msg) => res.write(`data: ${JSON.stringify({ message: msg })}\n\n`);
 
   try {
-    const base = getSettings();
+    const base = getSettingsInternal();
     const settings = {
       ...base,
       ...(date_from && { search_from: date_from }),

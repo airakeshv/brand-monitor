@@ -29,7 +29,7 @@ Return ONLY valid JSON matching this exact schema — no markdown, no explanatio
   "model_used": "to be filled by router",
   "news": [{"title": "", "source": "", "url": "", "sentiment": "positive|neutral|negative|mixed", "emotion": "", "snippet": ""}],
   "social": [{"title": "", "source": "", "url": "", "sentiment": "", "snippet": ""}],
-  "reviews": [{"platform": "", "rating": 0, "excerpt": "", "urgency": "CRITICAL|HIGH|WATCH", "draft_response": ""}],
+  "reviews": [{"platform": "", "rating": null, "excerpt": "", "urgency": "CRITICAL|HIGH|WATCH", "draft_response": ""}],
   "ai_visibility": [],
   "competitor_signals": [{"company": "", "signal_type": "", "detail": ""}],
   "corporate_events": [{"type": "", "headline": "", "implication": ""}],
@@ -45,6 +45,7 @@ Rules:
 - Sentiment must be one of: positive, neutral, negative, mixed, strongly_positive, strongly_negative
 - Flag crisis_flag.triggered = true if you see fraud, lawsuit, scam, data breach, or viral negative coverage
 - Extract top 5–8 keywords from all results combined
+- For [REVIEW] tagged results: always create a review entry — use the snippet as excerpt, set platform from source name, infer urgency from tone (negative/complaint = CRITICAL, concern = HIGH, positive/neutral = WATCH), set rating to null if not stated, write a draft_response
 - draft_response for reviews must be under 80 words, professional and empathetic
 - Return ONLY the JSON object`;
 }

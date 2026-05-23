@@ -218,8 +218,11 @@ function LLMTab({ s, set }) {
           );
         })}
       </div>
-      <Field label="API Key (encrypted at rest)" hint="Leave blank to use the built-in Gemini free tier.">
+      <Field label="API Key (encrypted at rest)" hint="Leave blank to use the built-in Gemini free tier. Clear the field to remove a stored key.">
         <TInput type="password" value={s.llm_api_key||''} onChange={v=>set({...s,llm_api_key:v})} placeholder="Paste your API key" />
+        {s.llm_api_key_set && (s.llm_api_key === '••••••••' || !s.llm_api_key) && (
+          <div style={{ marginTop:5, color:'#22c55e', fontSize:12 }}>Key stored securely ✓ — paste a new key to replace it</div>
+        )}
       </Field>
       <Field label="Fallback Model">
         <TSelect value={s.fallback_model||'gemini-2.5-flash'} onChange={v=>set({...s,fallback_model:v})}>
@@ -638,7 +641,20 @@ export default function Settings() {
   useEffect(() => {
     fetch(`${API}/api/settings`)
       .then(r => r.json())
-      .then(d => { setSettings(d); setLoaded(true); })
+      .then(d => {
+        // auto-detect timezone and default delivery time on first-ever setup
+        if (!d.company_name) {
+          const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+          if (tz) {
+            d.timezone     = tz;
+            d.delivery_time =
+              tz.startsWith('America/') ? '06:30' :
+              tz.startsWith('Europe/')  ? '07:00' : '08:00';
+          }
+        }
+        setSettings(d);
+        setLoaded(true);
+      })
       .catch(() => setLoaded(true));
   }, []);
 

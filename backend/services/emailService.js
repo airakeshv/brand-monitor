@@ -59,7 +59,7 @@ function buildHtml(digest) {
     <tr>
       <td style="padding:10px 0;border-bottom:1px solid #2A3858;border-left:3px solid ${urgencyColor(r.urgency)};padding-left:12px">
         <span style="color:${urgencyColor(r.urgency)};font-weight:700;font-size:12px">${r.urgency||''}</span>
-        <span style="margin-left:8px;color:#B4B4B4;font-size:12px">${r.platform||''} · ${'★'.repeat(Math.max(0,r.rating||0))}${'☆'.repeat(Math.max(0,5-(r.rating||0)))}</span>
+        <span style="margin-left:8px;color:#B4B4B4;font-size:12px">${r.platform||''}${r.rating != null ? ' · ' + '★'.repeat(Math.max(0,r.rating||0)) + '☆'.repeat(Math.max(0,5-(r.rating||0))) : ''}</span>
         <div style="color:#FFFFFF;margin-top:4px;font-size:14px">"${r.excerpt||''}"</div>
         ${r.draft_response ? `<div style="background:#111830;border:1px solid #2A3858;border-radius:8px;padding:8px 12px;margin-top:8px;color:#B4B4B4;font-size:13px"><strong style="color:#5B63EB">Suggested reply:</strong> ${r.draft_response}</div>` : ''}
       </td>
@@ -78,6 +78,33 @@ function buildHtml(digest) {
     ? `<div style="background:rgba(250,204,21,0.1);border:1px solid #facc15;border-radius:10px;padding:12px 16px;margin-top:16px">
         <strong style="color:#facc15">Watch Out:</strong> <span style="color:#FFFFFF">${digest.watch_out}</span>
        </div>` : '';
+
+  const aiVisibilityRows = (digest.ai_visibility || []).filter(a => a.engine).map(a => `
+    <tr>
+      <td style="padding:10px 0;border-bottom:1px solid #2A3858">
+        <span style="background:rgba(34,197,94,0.15);color:#22c55e;border:1px solid rgba(34,197,94,0.3);border-radius:999px;padding:2px 10px;font-size:11px;font-weight:600;text-transform:uppercase">${a.engine}</span>
+        ${a.accuracy_flag === false ? `<span style="margin-left:8px;background:#ef4444;color:#fff;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:600">INACCURATE</span>` : ''}
+        <div style="color:#B4B4B4;font-size:13px;margin-top:6px">${a.summary || ''}</div>
+      </td>
+    </tr>`).join('');
+
+  const competitorRows = (digest.competitor_signals || []).filter(c => c.company).map(c => `
+    <tr>
+      <td style="padding:10px 0;border-bottom:1px solid #2A3858;border-left:3px solid #5B63EB;padding-left:12px">
+        <span style="color:#5B63EB;font-weight:700;font-size:13px">${c.company}</span>
+        <span style="margin-left:8px;background:rgba(91,99,235,0.15);color:#5B63EB;border-radius:4px;padding:1px 7px;font-size:11px">${c.signal_type || ''}</span>
+        <div style="color:#B4B4B4;font-size:13px;margin-top:4px">${c.detail || ''}</div>
+      </td>
+    </tr>`).join('');
+
+  const corporateRows = (digest.corporate_events || []).filter(e => e.headline).map(e => `
+    <tr>
+      <td style="padding:10px 0;border-bottom:1px solid #2A3858">
+        <span style="background:rgba(250,204,21,0.15);color:#facc15;border:1px solid rgba(250,204,21,0.3);border-radius:999px;padding:2px 10px;font-size:11px;font-weight:600;text-transform:uppercase">${e.type || 'EVENT'}</span>
+        <div style="color:#FFFFFF;font-weight:600;font-size:14px;margin-top:6px">${e.headline}</div>
+        ${e.implication ? `<div style="color:#B4B4B4;font-size:13px;margin-top:4px">${e.implication}</div>` : ''}
+      </td>
+    </tr>`).join('');
 
   return `<!DOCTYPE html>
 <html>
@@ -117,6 +144,18 @@ function buildHtml(digest) {
           ${reviewRows ? `<div style="color:#E91E8C;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin:20px 0 8px">Review Alerts</div>
           <table width="100%" cellpadding="0" cellspacing="0">${reviewRows}</table>` : ''}
 
+          <!-- AI Visibility -->
+          ${aiVisibilityRows ? `<div style="color:#E91E8C;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin:20px 0 8px">AI Visibility</div>
+          <table width="100%" cellpadding="0" cellspacing="0">${aiVisibilityRows}</table>` : ''}
+
+          <!-- Competitor Signals -->
+          ${competitorRows ? `<div style="color:#E91E8C;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin:20px 0 8px">Competitor Signals</div>
+          <table width="100%" cellpadding="0" cellspacing="0">${competitorRows}</table>` : ''}
+
+          <!-- Corporate Events -->
+          ${corporateRows ? `<div style="color:#E91E8C;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin:20px 0 8px">Corporate Events</div>
+          <table width="100%" cellpadding="0" cellspacing="0">${corporateRows}</table>` : ''}
+
           <!-- Keywords -->
           ${keywords ? `<div style="color:#E91E8C;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin:20px 0 8px">Trending Keywords</div>
           <div>${keywords}</div>` : ''}
@@ -154,6 +193,15 @@ function buildText(digest) {
     '',
     '--- REVIEWS ---',
     ...(digest.reviews || []).map(r => `[${r.urgency}] ${r.platform} ${r.rating}★\n"${r.excerpt}"\nSuggested: ${r.draft_response}`),
+    '',
+    '--- AI VISIBILITY ---',
+    ...(digest.ai_visibility || []).filter(a => a.engine).map(a => `[${a.engine}] ${a.summary}${a.accuracy_flag === false ? ' ⚠ INACCURATE' : ''}`),
+    '',
+    '--- COMPETITOR SIGNALS ---',
+    ...(digest.competitor_signals || []).filter(c => c.company).map(c => `${c.company} (${c.signal_type}): ${c.detail}`),
+    '',
+    '--- CORPORATE EVENTS ---',
+    ...(digest.corporate_events || []).filter(e => e.headline).map(e => `[${e.type}] ${e.headline}${e.implication ? ' — ' + e.implication : ''}`),
     '',
     `Keywords: ${(digest.keywords || []).join(', ')}`,
     digest.watch_out ? `Watch Out: ${digest.watch_out}` : '',
