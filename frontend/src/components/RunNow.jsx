@@ -2,31 +2,19 @@ import { useState } from 'react';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
-const BADGE = {
-  news:   { bg: '#1e3a5f', color: '#3B9EFF',  label: 'News'   },
-  social: { bg: '#2e1b4a', color: '#A855F7',  label: 'Social' },
-  review: { bg: '#1a3a2a', color: '#22c55e',  label: 'Review' },
+const BORDER_COLOR = {
+  news:   '#1d9bf0',
+  social: '#a855f7',
+  review: '#22c55e',
 };
-
-// coloured pill for source category
-function SourceBadge({ type }) {
-  const s = BADGE[type] || { bg: '#2A3858', color: '#B4B4B4', label: type };
-  return (
-    <span style={{ background: s.bg, color: s.color, fontSize: 10, fontWeight: 700,
-      padding: '2px 7px', borderRadius: 4, textTransform: 'uppercase', letterSpacing: 0.5,
-      whiteSpace: 'nowrap', flexShrink: 0 }}>
-      {s.label}
-    </span>
-  );
-}
 
 // one news / social row
 function ResultRow({ item, type }) {
   const sentColor = item.sentiment === 'positive' ? '#22c55e'
     : item.sentiment === 'negative' ? '#ef4444' : '#6B7A99';
   return (
-    <div style={{ display: 'flex', gap: 8, padding: '8px 0', borderBottom: '1px solid #1e2a44' }}>
-      <SourceBadge type={type} />
+    <div style={{ padding: '8px 0 8px 10px', borderBottom: '1px solid #1e2a44',
+      borderLeft: `3px solid ${BORDER_COLOR[type] || '#2A3858'}` }}>
       <div style={{ minWidth: 0 }}>
         {item.url
           ? <a href={item.url} target="_blank" rel="noreferrer"
@@ -97,8 +85,8 @@ function DigestDisplay({ digest }) {
             Reviews ({reviews.length})
           </h4>
           {reviews.map((item, i) => (
-            <div key={i} style={{ display: 'flex', gap: 8, padding: '8px 0', borderBottom: '1px solid #1e2a44' }}>
-              <SourceBadge type="review" />
+            <div key={i} style={{ padding: '8px 0 8px 10px', borderBottom: '1px solid #1e2a44',
+              borderLeft: `3px solid ${BORDER_COLOR.review}` }}>
               <div>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   <span style={{ color: '#E2E8F0', fontSize: 13, fontWeight: 600 }}>{item.platform}</span>
