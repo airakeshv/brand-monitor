@@ -1,3 +1,4 @@
+// v1.1 - persistence confirmed
 // persistence test - safe to remove
 import dotenv from 'dotenv';
 import { resolve, dirname } from 'path';
