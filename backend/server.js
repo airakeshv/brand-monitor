@@ -25,6 +25,8 @@ app.use('/api', apiRouter);
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
+console.log('Database path:', process.env.DATABASE_PATH || 'local fallback');
+
 // initialise database then start server
 initDB();
 initDigestTable();
