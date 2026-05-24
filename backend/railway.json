@@ -5,5 +5,11 @@
   "deploy": {
     "startCommand": "node server.js",
     "restartPolicyType": "always"
-  }
+  },
+  "volumes": [
+    {
+      "name": "brand-monitor-data",
+      "mountPath": "/data"
+    }
+  ]
 }

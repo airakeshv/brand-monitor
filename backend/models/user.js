@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 
-const DB_PATH = process.env.DATABASE_PATH || './data/brand-monitor.db';
+const DB_PATH = process.env.DATABASE_PATH || path.join(process.cwd(), 'data', 'brand-monitor.db');
 
 // derive a 32-byte key from ENCRYPTION_KEY env var (or a safe dev fallback)
 function deriveKey() {
