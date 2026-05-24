@@ -8,6 +8,7 @@ import express from 'express';
 import cors from 'cors';
 import { initDB } from './models/user.js';
 import { initDigestTable } from './models/digest.js';
+import { initDeliveryLogTable } from './models/deliveryLog.js';
 import apiRouter from './routes/api.js';
 import { scheduleDigest } from './scheduler/cronManager.js';
 
@@ -26,6 +27,7 @@ app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 // initialise database then start server
 initDB();
 initDigestTable();
+initDeliveryLogTable();
 app.listen(PORT, () => {
   console.log(`Brand Monitor backend running on port ${PORT}`);
   scheduleDigest();

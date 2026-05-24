@@ -7,7 +7,8 @@ import { sendWhatsAppDigest } from '../services/whatsappService.js';
 import { sendSlackDigest } from '../services/slackService.js';
 import { getSettings, getSettingsInternal, saveSettings } from '../models/user.js';
 import { getHistory, getDigestById } from '../models/digest.js';
-import { scheduleDigest, stopSchedule } from '../scheduler/cronManager.js';
+import { scheduleDigest, stopSchedule, getScheduleStatus } from '../scheduler/cronManager.js';
+import { getDeliveryHistory } from '../models/deliveryLog.js';
 
 const router = Router();
 
@@ -146,7 +147,7 @@ router.post('/run-now', async (req, res) => {
 router.post('/schedule', (_req, res) => {
   try {
     scheduleDigest();
-    res.json({ ok: true, message: 'Schedule updated' });
+    res.json({ ok: true, message: 'Schedule updated', status: getScheduleStatus() });
   } catch (err) {
     res.status(500).json({ error: 'Failed to schedule' });
   }
@@ -159,6 +160,24 @@ router.delete('/schedule', (_req, res) => {
     res.json({ ok: true, message: 'Schedule stopped' });
   } catch (err) {
     res.status(500).json({ error: 'Failed to stop schedule' });
+  }
+});
+
+// get current scheduler state + next fire time
+router.get('/schedule/status', (_req, res) => {
+  try {
+    res.json(getScheduleStatus());
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to get schedule status' });
+  }
+});
+
+// get delivery log history (last 30 runs)
+router.get('/schedule/history', (_req, res) => {
+  try {
+    res.json(getDeliveryHistory(30));
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to get delivery history' });
   }
 });
 
