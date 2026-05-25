@@ -84,8 +84,27 @@ export function initDB() {
     )
   `);
 
-  // safe migration: add news_lookback column if it doesn't already exist
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      email      TEXT    NOT NULL UNIQUE,
+      created_at TEXT    DEFAULT (datetime('now'))
+    )
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS magic_tokens (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id    INTEGER NOT NULL REFERENCES users(id),
+      token_hash TEXT    NOT NULL,
+      expires_at TEXT    NOT NULL,
+      used       INTEGER NOT NULL DEFAULT 0
+    )
+  `);
+
+  // safe migrations
   try { db.exec("ALTER TABLE settings ADD COLUMN news_lookback TEXT DEFAULT '7d'"); } catch (_) {}
+  try { db.exec('ALTER TABLE settings ADD COLUMN workspace_id INTEGER'); } catch (_) {}
 
   // seed a single-user default row if none exists
   const row = db.prepare('SELECT id FROM settings WHERE id = 1').get();
@@ -98,6 +117,21 @@ export function initDB() {
   if (keyRow?.llm_api_key && !isEncrypted(keyRow.llm_api_key)) {
     db.prepare('UPDATE settings SET llm_api_key = ? WHERE id = 1').run(encrypt(keyRow.llm_api_key));
   }
+}
+
+// seed default user + workspace for the existing single-user row — called after initWorkspaceTable()
+export function runSeedMigration() {
+  const db = getDB();
+  const userCount = db.prepare('SELECT COUNT(*) as n FROM users').get().n;
+  if (userCount > 0) return;
+
+  db.prepare("INSERT OR IGNORE INTO users (id, email) VALUES (1, 'seed@local')").run();
+
+  const s = db.prepare('SELECT company_name FROM settings WHERE id = 1').get();
+  const name = s?.company_name || 'Default';
+  db.prepare('INSERT OR IGNORE INTO workspaces (id, user_id, name) VALUES (1, 1, ?)').run(name);
+
+  db.prepare('UPDATE settings SET workspace_id = 1 WHERE id = 1 AND workspace_id IS NULL').run();
 }
 
 // get the single user's settings — API key is masked for client safety
