@@ -57,7 +57,7 @@
   - [x] 1.6 In `backend/models/deliveryLog.js` — safe ALTER TABLE to add `workspace_id INTEGER` to `delivery_log`
   - [x] 1.7 In `backend/models/user.js` `initDB()` — seed migration on boot: if `users` table is empty, insert seed user `(email='seed@local')`, insert seed workspace `(user_id=1, name=company_name||'Default')`, set `workspace_id=1` on existing settings row `id=1`
 
-- [ ] 2.0 Backend auth API
+- [x] 2.0 Backend auth API
   - [x] 2.1 Run `pnpm add jsonwebtoken` inside `backend/`
   - [x] 2.2 Create `backend/services/authService.js` — `hashToken(raw)` (SHA-256 hex), `generateMagicToken()` (returns `{ raw, hash, expiresAt }`), `signJWT(userId, email)` (7-day JWT signed with `JWT_SECRET`), `verifyJWT(token)` (returns payload or null)
   - [x] 2.3 In `backend/routes/api.js` — add `POST /api/auth/request-link`: accepts `{ email }`, upserts user row, inserts magic_token row (hashed), sends email via Resend with link `${FRONTEND_URL}/auth/callback?token=<raw>`
