@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+
+// read JWT from localStorage and return auth header for every fetch
+const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('bm_token') || ''}` });
 const TABS = ['Company', 'Sources', 'LLM', 'Delivery', 'Schedule'];
 
 const LLM_MODELS = [
@@ -353,7 +356,7 @@ function ScheduleTab({ s, set, onActivate, onStop, schedMsg }) {
     try {
       const body = { company, ...(dateFrom && { date_from: dateFrom }), ...(dateTo && { date_to: dateTo }) };
       const res = await fetch(`${API}/api/run-now`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+        method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() }, body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const reader = res.body.getReader();
@@ -639,7 +642,7 @@ export default function Settings() {
   const [schedMsg, setSchedMsg] = useState(null);
 
   useEffect(() => {
-    fetch(`${API}/api/settings`)
+    fetch(`${API}/api/settings`, { headers: authHeaders() })
       .then(r => r.json())
       .then(d => {
         // auto-detect timezone and default delivery time on first-ever setup
@@ -663,7 +666,7 @@ export default function Settings() {
     try {
       const r = await fetch(`${API}/api/settings`, {
         method: 'PUT',
-        headers: { 'Content-Type':'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify(settings),
       });
       if (r.ok) { setSaved(true); setTimeout(() => setSaved(false), 3000); }
@@ -674,7 +677,7 @@ export default function Settings() {
   const handleActivate = async () => {
     await handleSave();
     try {
-      const r = await fetch(`${API}/api/schedule`, { method:'POST' });
+      const r = await fetch(`${API}/api/schedule`, { method: 'POST', headers: authHeaders() });
       const j = await r.json();
       setSchedMsg({ ok: r.ok, message: j.message || j.error });
     } catch (e) { setSchedMsg({ ok:false, message: e.message }); }
@@ -682,7 +685,7 @@ export default function Settings() {
 
   const handleStop = async () => {
     try {
-      const r = await fetch(`${API}/api/schedule`, { method:'DELETE' });
+      const r = await fetch(`${API}/api/schedule`, { method: 'DELETE', headers: authHeaders() });
       const j = await r.json();
       setSchedMsg({ ok: r.ok, message: j.message || j.error });
     } catch (e) { setSchedMsg({ ok:false, message: e.message }); }

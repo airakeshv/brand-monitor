@@ -3,6 +3,9 @@ import DigestPreview from '../components/DigestPreview.jsx';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
+// read JWT from localStorage and return auth header for every fetch
+const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('bm_token') || ''}` });
+
 // urgency color for review badge
 function crisisColor(triggered) {
   return triggered ? '#ef4444' : '#22c55e';
@@ -67,7 +70,7 @@ export default function History() {
 
   // load history on mount
   useEffect(() => {
-    fetch(`${API}/api/history`)
+    fetch(`${API}/api/history`, { headers: authHeaders() })
       .then(r => r.json())
       .then(data => {
         setRows(Array.isArray(data) ? data : []);
