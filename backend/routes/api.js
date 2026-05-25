@@ -56,10 +56,11 @@ router.get('/settings', (_req, res) => {
   }
 });
 
-// update settings (PUT or POST — both accepted)
+// update settings (PUT or POST — both accepted) and reschedule cron
 function handleSaveSettings(req, res) {
   try {
     saveSettings(req.body);
+    scheduleDigest();
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: 'Failed to save settings' });

@@ -23,12 +23,14 @@ const TZ_ABBR = {
   'America/Sao_Paulo':     'BRT',
 };
 
-// replace the "GMT±H:MM" offset in timezone_label with a friendly abbreviation
-function fixTimezoneLabel(digest, timezone) {
-  const abbr = TZ_ABBR[timezone];
-  if (!abbr || !digest.timezone_label) return digest;
-  digest.timezone_label = digest.timezone_label.replace(/GMT[+-]\d+:\d+/, abbr);
-  return digest;
+// build the timezone_label from scheduled delivery_time — never trust the LLM for this
+function buildTimezoneLabel(settings) {
+  const time = settings.delivery_time || '08:00';
+  const [hh, mm] = time.split(':').map(Number);
+  const hour12 = hh % 12 || 12;
+  const ampm = hh < 12 ? 'AM' : 'PM';
+  const abbr = TZ_ABBR[settings.timezone || 'Asia/Kolkata'] || settings.timezone || 'IST';
+  return `${hour12}:${String(mm).padStart(2, '0')} ${ampm} ${abbr}`;
 }
 
 // social platform domains/keywords — items from these always belong in social, not news
@@ -85,7 +87,7 @@ export async function runDigest(company, settings = {}, onProgress = null) {
   onProgress?.('Validating digest…');
   let digest = parseAndValidate(text, model_used);
   digest = normaliseSections(digest);
-  digest = fixTimezoneLabel(digest, settings.timezone || 'Asia/Kolkata');
+  digest.timezone_label = buildTimezoneLabel(settings);
 
   const { lastInsertRowid } = saveDigest({
     company,

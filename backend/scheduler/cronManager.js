@@ -1,7 +1,7 @@
 import cron from 'node-cron';
 import { CronExpressionParser } from 'cron-parser';
 import { fromZonedTime } from 'date-fns-tz';
-import { getSettings, saveSettings } from '../models/user.js';
+import { getSettings, getSettingsInternal, saveSettings } from '../models/user.js';
 import { runDigest } from '../services/digestService.js';
 import { sendDigestEmail } from '../services/emailService.js';
 import { sendWhatsAppDigest } from '../services/whatsappService.js';
@@ -91,9 +91,9 @@ async function deliverDigest(settings) {
 
 // attempt delivery with one automatic retry after 5 minutes on failure
 async function deliverWithRetry(attempt = 1) {
-  const settings = getSettings();
+  const settings = getSettingsInternal();
   try {
-    await deliverDigest({ ...settings, llm_api_key: settings.llm_api_key });
+    await deliverDigest(settings);
   } catch (err) {
     console.error(`Scheduled digest failed (attempt ${attempt}): ${err.message}`);
     if (attempt < 2) {
