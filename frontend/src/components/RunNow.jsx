@@ -1,9 +1,7 @@
 import { useState } from 'react';
+import { authFetch } from '../utils/api.js';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-
-// read JWT from localStorage and return auth header for every fetch
-const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('bm_token') || ''}` });
 
 const BORDER_COLOR = {
   news:   '#1d9bf0',
@@ -130,9 +128,8 @@ export default function RunNow({ company, dateFrom, dateTo, onDigest }) {
     setDigest(null);
 
     try {
-      const res = await fetch(`${API}/api/run-now`, {
+      const res = await authFetch(`${API}/api/run-now`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({
           company: company.trim(),
           ...(dateFrom && { date_from: dateFrom }),

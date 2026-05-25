@@ -29,6 +29,7 @@ router.post('/auth/request-link', async (req, res) => {
     db.prepare('INSERT INTO magic_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)').run(user.id, hash, expiresAt);
 
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    console.log('Sending magic link to:', email);
     await sendMagicLinkEmail(email, `${frontendUrl}/auth/callback?token=${raw}`);
 
     res.json({ ok: true });

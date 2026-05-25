@@ -1,10 +1,8 @@
 import { useState, useEffect } from 'react';
 import DigestPreview from '../components/DigestPreview.jsx';
+import { authFetch } from '../utils/api.js';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-
-// read JWT from localStorage and return auth header for every fetch
-const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('bm_token') || ''}` });
 
 // urgency color for review badge
 function crisisColor(triggered) {
@@ -70,7 +68,7 @@ export default function History() {
 
   // load history on mount
   useEffect(() => {
-    fetch(`${API}/api/history`, { headers: authHeaders() })
+    authFetch(`${API}/api/history`)
       .then(r => r.json())
       .then(data => {
         setRows(Array.isArray(data) ? data : []);
