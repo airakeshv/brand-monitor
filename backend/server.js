@@ -13,6 +13,7 @@ import { initWorkspaceTable } from './models/workspace.js';
 import { initDigestTable } from './models/digest.js';
 import { initDeliveryLogTable } from './models/deliveryLog.js';
 import apiRouter from './routes/api.js';
+import { requireAuth } from './middleware/auth.js';
 import { scheduleDigest } from './scheduler/cronManager.js';
 
 const app = express();
@@ -23,6 +24,11 @@ app.use(cors({
 }));
 app.use(express.json());
 
+// protect all /api/* routes except auth endpoints and ping
+app.use('/api', (req, res, next) => {
+  if (req.path.startsWith('/auth/') || req.path === '/ping') return next();
+  return requireAuth(req, res, next);
+});
 app.use('/api', apiRouter);
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));

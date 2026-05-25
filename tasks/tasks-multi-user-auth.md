@@ -58,13 +58,13 @@
   - [x] 1.7 In `backend/models/user.js` `initDB()` — seed migration on boot: if `users` table is empty, insert seed user `(email='seed@local')`, insert seed workspace `(user_id=1, name=company_name||'Default')`, set `workspace_id=1` on existing settings row `id=1`
 
 - [ ] 2.0 Backend auth API
-  - [ ] 2.1 Run `pnpm add jsonwebtoken` inside `backend/`
-  - [ ] 2.2 Create `backend/services/authService.js` — `hashToken(raw)` (SHA-256 hex), `generateMagicToken()` (returns `{ raw, hash, expiresAt }`), `signJWT(userId, email)` (7-day JWT signed with `JWT_SECRET`), `verifyJWT(token)` (returns payload or null)
-  - [ ] 2.3 In `backend/routes/api.js` — add `POST /api/auth/request-link`: accepts `{ email }`, upserts user row, inserts magic_token row (hashed), sends email via Resend with link `${FRONTEND_URL}/auth/callback?token=<raw>`
-  - [ ] 2.4 In `backend/routes/api.js` — add `GET /api/auth/verify`: reads `?token`, SHA-256 hashes it, looks up token row (not expired, not used), marks `used=1`, returns `{ token: signJWT(...), expiresAt }`
-  - [ ] 2.5 Create `backend/middleware/auth.js` — reads `Authorization: Bearer <jwt>`, calls `verifyJWT`, attaches `req.userId` and `req.userEmail`; returns 401 if missing or invalid
-  - [ ] 2.6 In `backend/server.js` — apply auth middleware to all `/api/*` except `/api/auth/*` and `/api/ping` using a selective middleware pattern
-  - [ ] 2.7 Add `JWT_SECRET=` and `FRONTEND_URL=` to `.env.example`
+  - [x] 2.1 Run `pnpm add jsonwebtoken` inside `backend/`
+  - [x] 2.2 Create `backend/services/authService.js` — `hashToken(raw)` (SHA-256 hex), `generateMagicToken()` (returns `{ raw, hash, expiresAt }`), `signJWT(userId, email)` (7-day JWT signed with `JWT_SECRET`), `verifyJWT(token)` (returns payload or null)
+  - [x] 2.3 In `backend/routes/api.js` — add `POST /api/auth/request-link`: accepts `{ email }`, upserts user row, inserts magic_token row (hashed), sends email via Resend with link `${FRONTEND_URL}/auth/callback?token=<raw>`
+  - [x] 2.4 In `backend/routes/api.js` — add `GET /api/auth/verify`: reads `?token`, SHA-256 hashes it, looks up token row (not expired, not used), marks `used=1`, returns `{ token: signJWT(...), expiresAt }`
+  - [x] 2.5 Create `backend/middleware/auth.js` — reads `Authorization: Bearer <jwt>`, calls `verifyJWT`, attaches `req.userId` and `req.userEmail`; returns 401 if missing or invalid
+  - [x] 2.6 In `backend/server.js` — apply auth middleware to all `/api/*` except `/api/auth/*` and `/api/ping` using a selective middleware pattern
+  - [x] 2.7 Add `JWT_SECRET=` and `FRONTEND_URL=` to `.env.example`
 
 - [ ] 3.0 Backend workspace API
   - [ ] 3.1 In `backend/routes/api.js` — add `GET /api/workspaces` (calls `getWorkspaces(req.userId)`), `POST /api/workspaces` (calls `createWorkspace`, returns new workspace + its default settings row), `DELETE /api/workspaces/:id`
