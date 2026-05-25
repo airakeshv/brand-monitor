@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react';
-import { authFetch } from '../utils/api.js';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 const TABS = ['Company', 'Sources', 'LLM', 'Delivery', 'Schedule'];
@@ -353,8 +352,13 @@ function ScheduleTab({ s, set, onActivate, onStop, schedMsg }) {
     setRunState('running'); setRunMsg('');
     try {
       const body = { company, ...(dateFrom && { date_from: dateFrom }), ...(dateTo && { date_to: dateTo }) };
-      const res = await authFetch(`${API}/api/run-now`, {
-        method: 'POST', body: JSON.stringify(body),
+      const res = await fetch(`${API}/api/run-now`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + localStorage.getItem('bm_token'),
+        },
+        body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const reader = res.body.getReader();
@@ -640,7 +644,12 @@ export default function Settings() {
   const [schedMsg, setSchedMsg] = useState(null);
 
   useEffect(() => {
-    authFetch(`${API}/api/settings`)
+    fetch(`${API}/api/settings`, {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + localStorage.getItem('bm_token'),
+      },
+    })
       .then(r => r.json())
       .then(d => {
         // auto-detect timezone and default delivery time on first-ever setup
@@ -662,8 +671,12 @@ export default function Settings() {
   const handleSave = async () => {
     setSaving(true); setSaved(false);
     try {
-      const r = await authFetch(`${API}/api/settings`, {
+      const r = await fetch(`${API}/api/settings`, {
         method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + localStorage.getItem('bm_token'),
+        },
         body: JSON.stringify(settings),
       });
       if (r.ok) { setSaved(true); setTimeout(() => setSaved(false), 3000); }
@@ -674,7 +687,13 @@ export default function Settings() {
   const handleActivate = async () => {
     await handleSave();
     try {
-      const r = await authFetch(`${API}/api/schedule`, { method: 'POST' });
+      const r = await fetch(`${API}/api/schedule`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + localStorage.getItem('bm_token'),
+        },
+      });
       const j = await r.json();
       setSchedMsg({ ok: r.ok, message: j.message || j.error });
     } catch (e) { setSchedMsg({ ok:false, message: e.message }); }
@@ -682,7 +701,13 @@ export default function Settings() {
 
   const handleStop = async () => {
     try {
-      const r = await authFetch(`${API}/api/schedule`, { method: 'DELETE' });
+      const r = await fetch(`${API}/api/schedule`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + localStorage.getItem('bm_token'),
+        },
+      });
       const j = await r.json();
       setSchedMsg({ ok: r.ok, message: j.message || j.error });
     } catch (e) { setSchedMsg({ ok:false, message: e.message }); }

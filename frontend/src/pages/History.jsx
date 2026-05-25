@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import DigestPreview from '../components/DigestPreview.jsx';
-import { authFetch } from '../utils/api.js';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
@@ -68,7 +67,12 @@ export default function History() {
 
   // load history on mount
   useEffect(() => {
-    authFetch(`${API}/api/history`)
+    fetch(`${API}/api/history`, {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + localStorage.getItem('bm_token'),
+      },
+    })
       .then(r => r.json())
       .then(data => {
         setRows(Array.isArray(data) ? data : []);
