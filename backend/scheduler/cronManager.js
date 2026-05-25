@@ -8,8 +8,9 @@ import { sendWhatsAppDigest } from '../services/whatsappService.js';
 import { sendSlackDigest } from '../services/slackService.js';
 import { logDelivery } from '../models/deliveryLog.js';
 
-let activeTask  = null;
-let activeCron  = null;  // current cron expression string, for status reporting
+// Map of userId → { task: CronJob, cronExpr: string }
+// Using a Map prevents duplicate schedules — each userId can have exactly one active job
+const activeJobs = new Map();
 
 // returns the YYYY-MM-DD string for the day after a given YYYY-MM-DD
 function nextDayStr(dateStr) {
@@ -34,7 +35,6 @@ function toCronExpression(timeHHMM, timezone, frequency = 'daily') {
 }
 
 // compute ISO string for when this cron expression will next fire (UTC)
-// the cron expression is always in UTC, so parse with tz:'UTC'
 function nextRunISO(cronExpr) {
   try {
     const interval = CronExpressionParser.parse(cronExpr, { tz: 'UTC' });
@@ -89,16 +89,16 @@ async function deliverDigest(settings) {
   return digest;
 }
 
-// attempt delivery with one automatic retry after 5 minutes on failure
-async function deliverWithRetry(attempt = 1) {
+// attempt delivery for a specific user — retries once after 5 minutes on failure
+async function deliverWithRetry(userId, attempt = 1) {
   const settings = getSettingsInternal();
   try {
     await deliverDigest(settings);
   } catch (err) {
-    console.error(`Scheduled digest failed (attempt ${attempt}): ${err.message}`);
+    console.error(`Scheduled digest failed [user ${userId}] (attempt ${attempt}): ${err.message}`);
     if (attempt < 2) {
       console.log('Retrying in 5 minutes…');
-      setTimeout(() => deliverWithRetry(2), 5 * 60 * 1000);
+      setTimeout(() => deliverWithRetry(userId, 2), 5 * 60 * 1000);
     } else {
       logDelivery({
         company: settings.company_name || 'unknown',
@@ -110,45 +110,64 @@ async function deliverWithRetry(attempt = 1) {
   }
 }
 
-// start the cron schedule based on current settings
-export function scheduleDigest() {
-  if (activeTask) {
-    activeTask.stop();
-    activeTask = null;
-    activeCron = null;
+// cancel and remove all active cron jobs — called before any full reschedule
+function stopAllJobs() {
+  for (const { task } of activeJobs.values()) {
+    task.stop();
+  }
+  activeJobs.clear();
+}
+
+// schedule one user's digest — cancels any existing job for that userId first
+function scheduleUser(userId, settings) {
+  // cancel existing job for this userId to prevent duplicates
+  if (activeJobs.has(userId)) {
+    activeJobs.get(userId).task.stop();
+    activeJobs.delete(userId);
   }
 
-  const settings  = getSettings();
   if (!settings.company_name || !settings.delivery_time) return;
 
   const timezone  = settings.timezone  || 'Asia/Kolkata';
   const frequency = settings.frequency || 'daily';
   const cronExpr  = toCronExpression(settings.delivery_time, timezone, frequency);
 
-  activeTask = cron.schedule(cronExpr, () => deliverWithRetry(), { timezone: 'UTC' });
-  activeCron = cronExpr;
-  console.log(`Digest scheduled: ${frequency} at ${settings.delivery_time} ${timezone} → cron: ${cronExpr}`);
+  // always pass { timezone: 'UTC' } so Railway server local time never affects firing
+  const task = cron.schedule(cronExpr, () => deliverWithRetry(userId), { timezone: 'UTC' });
+  activeJobs.set(userId, { task, cronExpr });
+  console.log(`Digest scheduled [user ${userId}]: ${frequency} at ${settings.delivery_time} ${timezone} → cron: ${cronExpr}`);
 }
 
-// stop the active schedule
+// start (or restart) the full schedule — clears ALL existing jobs first to prevent stale crons
+export function scheduleDigest() {
+  stopAllJobs(); // wipe everything before reloading from DB
+
+  const settings = getSettings();
+  if (!settings.company_name || !settings.delivery_time) return;
+
+  // userId 1 = seed/single-user — will be replaced with workspace loop in Task 3.7
+  scheduleUser(1, settings);
+}
+
+// stop all active schedules
 export function stopSchedule() {
-  if (activeTask) {
-    activeTask.stop();
-    activeTask = null;
-    activeCron = null;
-  }
+  stopAllJobs();
 }
 
 // return current scheduler state for the status API
 export function getScheduleStatus() {
-  if (!activeTask || !activeCron) return { active: false };
+  if (activeJobs.size === 0) return { active: false };
+
   const settings = getSettings();
+  const job      = activeJobs.get(1); // single-user for now; extended in Task 3.7
+  if (!job) return { active: false };
+
   return {
-    active:           true,
-    cron:             activeCron,
-    delivery_time:    settings.delivery_time,
-    timezone:         settings.timezone || 'Asia/Kolkata',
-    frequency:        settings.frequency || 'daily',
-    next_run:         nextRunISO(activeCron),
+    active:        true,
+    cron:          job.cronExpr,
+    delivery_time: settings.delivery_time,
+    timezone:      settings.timezone || 'Asia/Kolkata',
+    frequency:     settings.frequency || 'daily',
+    next_run:      nextRunISO(job.cronExpr),
   };
 }

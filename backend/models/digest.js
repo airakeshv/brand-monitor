@@ -2,7 +2,8 @@ import { getDB } from './user.js';
 
 // create digests table if it doesn't exist
 export function initDigestTable() {
-  getDB().exec(`
+  const db = getDB();
+  db.exec(`
     CREATE TABLE IF NOT EXISTS digests (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       company TEXT NOT NULL,
@@ -13,6 +14,7 @@ export function initDigestTable() {
       created_at TEXT DEFAULT (datetime('now'))
     )
   `);
+  try { db.exec('ALTER TABLE digests ADD COLUMN workspace_id INTEGER'); } catch (_) {}
 }
 
 // save a new digest to history

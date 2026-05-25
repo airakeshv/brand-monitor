@@ -8,10 +8,12 @@ import { fileURLToPath } from 'url';
 dotenv.config({ path: resolve(dirname(fileURLToPath(import.meta.url)), '../.env') });
 import express from 'express';
 import cors from 'cors';
-import { initDB } from './models/user.js';
+import { initDB, runSeedMigration } from './models/user.js';
+import { initWorkspaceTable } from './models/workspace.js';
 import { initDigestTable } from './models/digest.js';
 import { initDeliveryLogTable } from './models/deliveryLog.js';
 import apiRouter from './routes/api.js';
+import { requireAuth } from './middleware/auth.js';
 import { scheduleDigest } from './scheduler/cronManager.js';
 
 const app = express();
@@ -22,16 +24,23 @@ app.use(cors({
 }));
 app.use(express.json());
 
+// protect all /api/* routes except auth endpoints and ping
+app.use('/api', (req, res, next) => {
+  if (req.path.startsWith('/auth/') || req.path === '/ping') return next();
+  return requireAuth(req, res, next);
+});
 app.use('/api', apiRouter);
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
 console.log('Database path:', process.env.DATABASE_PATH || 'local fallback');
 
-// initialise database then start server
-initDB();
-initDigestTable();
-initDeliveryLogTable();
+// initialise database then start server — order matters for FK dependencies
+initDB();               // settings, users, magic_tokens tables
+initWorkspaceTable();   // workspaces table (FK → users)
+runSeedMigration();     // link existing settings row to seed user + workspace
+initDigestTable();      // digests table + workspace_id column
+initDeliveryLogTable(); // delivery_log table + workspace_id column
 app.listen(PORT, () => {
   console.log(`Brand Monitor backend running on port ${PORT}`);
   scheduleDigest();

@@ -5,14 +5,62 @@ import { runDigest } from '../services/digestService.js';
 import { sendDigestEmail } from '../services/emailService.js';
 import { sendWhatsAppDigest } from '../services/whatsappService.js';
 import { sendSlackDigest } from '../services/slackService.js';
-import { getSettings, getSettingsInternal, saveSettings } from '../models/user.js';
+import { getDB, getSettings, getSettingsInternal, saveSettings } from '../models/user.js';
 import { getHistory, getDigestById } from '../models/digest.js';
 import { scheduleDigest, stopSchedule, getScheduleStatus } from '../scheduler/cronManager.js';
 import { getDeliveryHistory } from '../models/deliveryLog.js';
+import { generateMagicToken, hashToken, signJWT, sendMagicLinkEmail } from '../services/authService.js';
 
 const router = Router();
 
 router.get('/ping', (_req, res) => res.json({ message: 'API ready' }));
+
+// request a magic sign-in link — upserts user, stores hashed token, emails the link
+router.post('/auth/request-link', async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email || !/\S+@\S+\.\S+/.test(email)) return res.status(400).json({ error: 'Valid email is required' });
+
+    const db = getDB();
+    db.prepare('INSERT OR IGNORE INTO users (email) VALUES (?)').run(email);
+    const user = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+
+    const { raw, hash, expiresAt } = generateMagicToken();
+    db.prepare('INSERT INTO magic_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)').run(user.id, hash, expiresAt);
+
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    await sendMagicLinkEmail(email, `${frontendUrl}/auth/callback?token=${raw}`);
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Request link error:', err.message);
+    res.status(500).json({ error: 'Failed to send magic link' });
+  }
+});
+
+// verify a magic link token — marks it used and returns a signed JWT
+router.get('/auth/verify', (req, res) => {
+  try {
+    const { token } = req.query;
+    if (!token) return res.status(400).json({ error: 'token is required' });
+
+    const db   = getDB();
+    const hash = hashToken(token);
+    const row  = db.prepare('SELECT * FROM magic_tokens WHERE token_hash = ? AND used = 0').get(hash);
+
+    if (!row)                                 return res.status(401).json({ error: 'Invalid or already used link' });
+    if (new Date(row.expires_at) < new Date()) return res.status(401).json({ error: 'Link has expired. Request a new one.' });
+
+    db.prepare('UPDATE magic_tokens SET used = 1 WHERE id = ?').run(row.id);
+    const user      = db.prepare('SELECT * FROM users WHERE id = ?').get(row.user_id);
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+    res.json({ token: signJWT(user.id, user.email), expiresAt });
+  } catch (err) {
+    console.error('Verify token error:', err.message);
+    res.status(500).json({ error: 'Verification failed' });
+  }
+});
 
 // search all sources for a company name
 router.post('/search', async (req, res) => {

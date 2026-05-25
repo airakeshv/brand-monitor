@@ -2,7 +2,8 @@ import { getDB } from './user.js';
 
 // create the delivery_log table if it doesn't exist
 export function initDeliveryLogTable() {
-  getDB().exec(`
+  const db = getDB();
+  db.exec(`
     CREATE TABLE IF NOT EXISTS delivery_log (
       id           INTEGER PRIMARY KEY AUTOINCREMENT,
       company      TEXT    NOT NULL,
@@ -16,6 +17,7 @@ export function initDeliveryLogTable() {
       digest_id    INTEGER
     )
   `);
+  try { db.exec('ALTER TABLE delivery_log ADD COLUMN workspace_id INTEGER'); } catch (_) {}
 }
 
 // insert one delivery attempt record
