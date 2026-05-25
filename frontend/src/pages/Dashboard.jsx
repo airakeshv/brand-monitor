@@ -4,6 +4,9 @@ import DigestPreview from '../components/DigestPreview.jsx';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
+// read JWT from localStorage and return auth header for every fetch
+const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('bm_token') || ''}` });
+
 const inputStyle = {
   background: '#0A0E27',
   border: '1px solid #2A3858',
@@ -54,7 +57,7 @@ export default function Dashboard() {
 
   // load saved company name from settings on mount
   useEffect(() => {
-    fetch(`${API}/api/settings`)
+    fetch(`${API}/api/settings`, { headers: authHeaders() })
       .then(r => r.json())
       .then(s => { if (s.company_name) setCompany(s.company_name); })
       .catch(() => {});
