@@ -28,6 +28,7 @@ export default function App() {
         {/* public routes */}
         <Route path="/login"       element={<Login />} />
         <Route path="/auth/callback" element={<AuthVerify />} />
+        <Route path="/auth/verify"   element={<AuthVerify />} />
 
         {/* root redirect */}
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
