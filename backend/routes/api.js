@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { searchAll } from '../services/searchService.js';
 import { applyNoiseFilter } from '../services/noiseFilter.js';
 import { runDigest } from '../services/digestService.js';
-import { sendDigestEmail } from '../services/emailService.js';
+import { sendDigestEmail, sendMultiCompanyDigestEmail } from '../services/emailService.js';
 import { sendWhatsAppDigest } from '../services/whatsappService.js';
 import { sendSlackDigest } from '../services/slackService.js';
 import { getDB, getSettings, getSettingsInternal, saveSettings } from '../models/user.js';
@@ -108,6 +108,16 @@ router.get('/settings', (_req, res) => {
 // update settings (PUT or POST — both accepted) then reschedule only this user's cron
 function handleSaveSettings(req, res) {
   try {
+    // plan limit: free = 1 company max, pro = 5 companies max
+    if (Array.isArray(req.body.companies)) {
+      const current      = getSettings();
+      const plan         = current.plan || 'pro';
+      const maxCompanies = plan === 'pro' ? 5 : 1;
+      const active       = req.body.companies.filter(Boolean);
+      if (active.length > maxCompanies) {
+        return res.status(403).json({ error: 'Upgrade to Pro to track more than 1 company' });
+      }
+    }
     saveSettings(req.body);
     // use getSettingsInternal so the scheduler gets decrypted/parsed settings
     const settings = getSettingsInternal();
@@ -141,9 +151,9 @@ router.get('/history/:id', (req, res) => {
 });
 
 // run digest immediately with SSE progress streaming; optional date_from/date_to override news lookback
+// ad-hoc (dashboard): pass { company } for a single run; omit to run all settings.companies[]
 router.post('/run-now', async (req, res) => {
-  const { company, date_from, date_to } = req.body;
-  if (!company) return res.status(400).json({ error: 'company is required' });
+  const { company: adHocCompany, date_from, date_to } = req.body;
 
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -152,12 +162,26 @@ router.post('/run-now', async (req, res) => {
   const send = (msg) => res.write(`data: ${JSON.stringify({ message: msg })}\n\n`);
 
   try {
-    const base = getSettingsInternal();
+    const base     = getSettingsInternal();
     const settings = {
       ...base,
       ...(date_from && { search_from: date_from }),
       ...(date_to   && { search_to:   date_to   }),
     };
+
+    // ad-hoc uses the passed company; settings test uses settings.companies[]
+    const companies = adHocCompany
+      ? [adHocCompany.trim()]
+      : (base.companies?.filter(Boolean).length > 0
+          ? base.companies.filter(Boolean)
+          : (base.company_name ? [base.company_name] : []));
+
+    if (companies.length === 0) {
+      res.write(`data: ${JSON.stringify({ error: 'No company configured. Add one in Settings → Company tab.' })}\n\n`);
+      res.end();
+      return;
+    }
+
     if (date_from && date_to) {
       const days = Math.round((new Date(date_to) - new Date(date_from)) / 86400000);
       if (days > 90) {
@@ -167,27 +191,46 @@ router.post('/run-now', async (req, res) => {
       }
       send(`Searching news from ${date_from} to ${date_to} (${days} days)…`);
     }
-    const { id, digest } = await runDigest(company, settings, send);
 
-    // attach date range to digest so email template can show coverage period
-    if (date_from) digest.search_from = date_from;
-    if (date_to)   digest.search_to   = date_to;
+    if (companies.length === 1) {
+      // single company — existing streaming flow
+      const { id, digest } = await runDigest(companies[0], settings, send);
+      if (date_from) digest.search_from = date_from;
+      if (date_to)   digest.search_to   = date_to;
 
-    const deliveryResults = {};
-    if (settings.email) {
-      send('Sending email…');
-      deliveryResults.email = await sendDigestEmail(digest, settings.email);
-    }
-    if (settings.whatsapp) {
-      send('Sending WhatsApp…');
-      deliveryResults.whatsapp = await sendWhatsAppDigest(digest, settings.whatsapp);
-    }
-    if (settings.slack_webhook) {
-      send('Sending Slack…');
-      deliveryResults.slack = await sendSlackDigest(digest, settings.slack_webhook);
-    }
+      const deliveryResults = {};
+      if (settings.email)         { send('Sending email…');    deliveryResults.email    = await sendDigestEmail(digest, settings.email); }
+      if (settings.whatsapp)      { send('Sending WhatsApp…'); deliveryResults.whatsapp = await sendWhatsAppDigest(digest, settings.whatsapp); }
+      if (settings.slack_webhook) { send('Sending Slack…');    deliveryResults.slack    = await sendSlackDigest(digest, settings.slack_webhook); }
 
-    res.write(`data: ${JSON.stringify({ done: true, id, digest, delivery: deliveryResults })}\n\n`);
+      res.write(`data: ${JSON.stringify({ done: true, id, digest, delivery: deliveryResults })}\n\n`);
+    } else {
+      // multi-company — run all in parallel then send one combined email
+      send(`Running digest for ${companies.length} companies: ${companies.join(', ')}…`);
+      const runs = await Promise.all(companies.map(async c => {
+        send(`Generating digest for ${c}…`);
+        return runDigest(c, settings);
+      }));
+      const digests = runs.map(r => r.digest);
+
+      const deliveryResults = {};
+      if (settings.email) {
+        send('Sending combined email…');
+        deliveryResults.email = await sendMultiCompanyDigestEmail(digests, settings.email);
+      }
+      if (settings.whatsapp) {
+        send('Sending WhatsApp…');
+        for (const d of digests) await sendWhatsAppDigest(d, settings.whatsapp);
+        deliveryResults.whatsapp = { ok: true };
+      }
+      if (settings.slack_webhook) {
+        send('Sending Slack…');
+        for (const d of digests) await sendSlackDigest(d, settings.slack_webhook);
+        deliveryResults.slack = { ok: true };
+      }
+
+      res.write(`data: ${JSON.stringify({ done: true, digests, delivery: deliveryResults })}\n\n`);
+    }
   } catch (err) {
     res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
   } finally {

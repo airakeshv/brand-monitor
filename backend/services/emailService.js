@@ -238,3 +238,114 @@ export async function sendDigestEmail(digest, toEmail) {
     return { ok: false, error: err.message };
   }
 }
+
+// ─── Multi-company combined email ────────────────────────────────────────────
+
+// build compact HTML section for one company inside a combined email
+function buildCompanySectionHtml(digest) {
+  const newsRows = (digest.news || []).slice(0, 5).map(n => `
+    <tr><td style="padding:8px 0;border-bottom:1px solid #1e2a44">
+      <span style="background:rgba(91,99,235,0.15);color:#5B63EB;border:1px solid rgba(91,99,235,0.3);border-radius:999px;padding:1px 8px;font-size:11px;font-weight:600">${n.source||''}</span>
+      <span style="margin-left:6px;background:${sentimentColor(n.sentiment)};color:#0A0E27;border-radius:999px;padding:1px 6px;font-size:11px;font-weight:600">${n.sentiment||''}</span>
+      <div style="margin-top:4px"><a href="${n.url||'#'}" style="color:#FFFFFF;font-weight:600;font-size:13px;text-decoration:none">${n.title||''}</a></div>
+    </td></tr>`).join('');
+  const reviewFlagged = (digest.reviews || []).filter(r => r.urgency === 'CRITICAL' || r.urgency === 'HIGH').length;
+  const crisisBadge   = digest.crisis_flag?.triggered
+    ? `<span style="background:#ef4444;color:#fff;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:700;margin-left:8px">⚠ CRISIS</span>` : '';
+  return `
+    <tr><td style="padding:20px 32px 4px">
+      <table width="100%" cellpadding="0" cellspacing="0">
+        <tr><td style="border-top:2px solid #5B63EB;padding-top:14px;padding-bottom:8px">
+          <div style="color:#FFFFFF;font-size:15px;font-weight:700">🏢 ${(digest.company||'').toUpperCase()}${crisisBadge}</div>
+          <div style="color:#6B7A99;font-size:12px;margin-top:4px">
+            News (${(digest.news||[]).length}) &nbsp;·&nbsp; Social (${(digest.social||[]).length})${reviewFlagged ? ` &nbsp;·&nbsp; <span style="color:#ef4444">${reviewFlagged} review${reviewFlagged>1?'s':''} flagged</span>` : ''}
+          </div>
+        </td></tr>
+        ${newsRows ? `<tr><td><table width="100%" cellpadding="0" cellspacing="0">${newsRows}</table></td></tr>` : ''}
+        ${digest.watch_out ? `<tr><td style="padding:8px 0 0"><div style="background:rgba(250,204,21,0.1);border-left:3px solid #facc15;padding:8px 12px;font-size:12px;color:#FFFFFF"><strong style="color:#facc15">Watch Out:</strong> ${digest.watch_out}</div></td></tr>` : ''}
+      </table>
+    </td></tr>`;
+}
+
+// build combined HTML email wrapping one section per company
+function buildMultiCompanyHtml(digests) {
+  const names     = digests.map(d => d.company).join(', ');
+  const date      = digests[0]?.date;
+  const tzLabel   = digests[0]?.timezone_label;
+  const model     = digests[0]?.model_used;
+  const anycrisis = digests.some(d => d.crisis_flag?.triggered);
+  return `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#0A0E27;font-family:Inter,sans-serif">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#0A0E27">
+    <tr><td align="center" style="padding:32px 16px">
+      <table width="600" cellpadding="0" cellspacing="0" style="background:#111830;border:1px solid #2A3858;border-radius:16px;overflow:hidden">
+        <tr><td style="background:linear-gradient(135deg,#5B63EB,#E91E8C);padding:24px 32px">
+          <div style="color:#FFFFFF;font-size:22px;font-weight:700">Brand<span style="color:#fff">Monitor</span></div>
+          <div style="color:rgba(255,255,255,0.9);font-size:15px;font-weight:600;margin-top:6px">${names}</div>
+          <div style="color:rgba(255,255,255,0.8);font-size:13px;margin-top:4px">📅 ${fmtReadable(date)||date}${tzLabel ? ' · ' + tzLabel : ''} · ${digests.length} companies</div>
+          <div style="color:rgba(255,255,255,0.6);font-size:12px;margin-top:8px">Powered by ${model}</div>
+        </td></tr>
+        ${anycrisis ? `<tr><td style="padding:16px 32px 0"><div style="background:rgba(239,68,68,0.15);border:1px solid #ef4444;border-radius:10px;padding:12px 16px"><strong style="color:#ef4444">⚠ CRISIS DETECTED — see company sections below</strong></div></td></tr>` : ''}
+        ${digests.map(buildCompanySectionHtml).join('')}
+        <tr><td style="border-top:1px solid #2A3858;padding:16px 32px;text-align:center;color:#6B7A99;font-size:12px">
+          BrandMonitor · Daily Digest · <a href="#" style="color:#5B63EB">Manage Preferences</a>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+}
+
+// build plain-text fallback for multi-company email
+function buildMultiCompanyText(digests) {
+  const lines = [
+    'BRAND MONITOR — MULTI-COMPANY DIGEST',
+    digests.map(d => d.company).join(', '),
+    `${fmtReadable(digests[0]?.date)} · ${digests[0]?.timezone_label || ''} | Model: ${digests[0]?.model_used}`,
+    '',
+  ];
+  for (const digest of digests) {
+    lines.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    lines.push(`🏢 ${digest.company.toUpperCase()}`);
+    lines.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    lines.push(`News (${(digest.news||[]).length}) | Social (${(digest.social||[]).length}) | Reviews (${(digest.reviews||[]).length})`);
+    if (digest.crisis_flag?.triggered) lines.push(`⚠ CRISIS: ${digest.crisis_flag.reason}`);
+    (digest.news || []).slice(0, 5).forEach(n => lines.push(`  [${n.sentiment||''}] ${n.title||''}`));
+    if (digest.watch_out) lines.push(`Watch Out: ${digest.watch_out}`);
+    lines.push('');
+  }
+  return lines.join('\n');
+}
+
+// send one combined email covering all companies — falls back to single format if only 1 digest
+export async function sendMultiCompanyDigestEmail(digests, toEmail) {
+  if (!digests?.length) return { ok: false, error: 'No digests provided' };
+  if (digests.length === 1) return sendDigestEmail(digests[0], toEmail);
+  try {
+    if (!process.env.RESEND_API_KEY || process.env.RESEND_API_KEY === 'add_later') {
+      return { ok: false, error: 'Resend key not set' };
+    }
+    const companies    = digests.map(d => d.company);
+    const date         = digests[0]?.date;
+    const tzLabel      = digests[0]?.timezone_label;
+    const anycrisis    = digests.some(d => d.crisis_flag?.triggered);
+    const crisisPrefix = anycrisis ? '🚨 CRISIS — ' : '';
+    const label        = companies.slice(0, 2).join(', ') + (companies.length > 2 ? ` +${companies.length - 2} more` : '');
+    const subject      = `${crisisPrefix}${label} Brand Digest · ${fmtReadable(date)||date}${tzLabel ? ' ' + tzLabel : ''}`;
+    const { data, error } = await getResend().emails.send({
+      from: process.env.RESEND_FROM || 'BrandMonitor <onboarding@resend.dev>',
+      to:   toEmail,
+      subject,
+      html: buildMultiCompanyHtml(digests),
+      text: buildMultiCompanyText(digests),
+    });
+    if (error) throw new Error(error.message);
+    return { ok: true, id: data?.id };
+  } catch (err) {
+    console.error('Multi-company email send failed:', err.message);
+    return { ok: false, error: err.message };
+  }
+}

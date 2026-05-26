@@ -121,22 +121,70 @@ function Toggle({ checked, onChange, label }) {
 
 /* ── Company tab ── */
 function CompanyTab({ s, set }) {
-  // changing company name clears all context fields for a fresh start
-  const onCompany = v => set({
-    ...s,
-    company_name:     v,
-    competitor_names: [],
-    executive_names:  [],
-    include_keywords: [],
-    exclude_keywords: [],
-    exclude_domains:  [],
-  });
+  const isPro = (s.plan || 'pro') !== 'free';
+  const MAX   = isPro ? 5 : 1;
+
+  // prefer companies[] array; fall back to legacy company_name for old rows
+  const companies = (s.companies?.length > 0) ? s.companies : (s.company_name ? [s.company_name] : ['']);
+
+  // keep companies[] and legacy company_name in sync
+  const setCompanies = next => set({ ...s, companies: next, company_name: next[0] || '' });
+
+  const updateAt   = (i, v) => { const a = [...companies]; a[i] = v; setCompanies(a); };
+  const removeAt   = i      => setCompanies(companies.filter((_, idx) => idx !== i));
+  const addCompany = ()     => { if (companies.length < MAX) setCompanies([...companies, '']); };
 
   return (
     <div>
-      <Field label="Company Name" hint="Changing the name clears competitor and keyword fields so you can start fresh.">
-        <TInput value={s.company_name} onChange={onCompany} placeholder="e.g. Tata Motors" />
+      <Field
+        label="Companies to Monitor"
+        hint={isPro
+          ? `Track up to ${MAX} companies — all results merged into one daily digest.`
+          : 'Free plan — 1 company. Upgrade to Pro to track up to 5.'}
+      >
+        {companies.map((c, idx) => (
+          <div key={idx} style={{ display:'flex', gap:8, marginBottom:8, alignItems:'center' }}>
+            <div style={{ flex:1 }} title={!isPro && idx > 0 ? 'Upgrade to Pro to add more companies' : ''}>
+              <input
+                type="text"
+                value={c ?? ''}
+                onChange={e => updateAt(idx, e.target.value)}
+                disabled={!isPro && idx > 0}
+                placeholder={idx === 0 ? 'e.g. Tata Motors (required)' : `Company ${idx + 1}`}
+                style={{
+                  ...inputStyle,
+                  opacity: (!isPro && idx > 0) ? 0.4 : 1,
+                  cursor:  (!isPro && idx > 0) ? 'not-allowed' : 'text',
+                }}
+              />
+            </div>
+            {idx > 0 && isPro && (
+              <button
+                onClick={() => removeAt(idx)}
+                style={{
+                  background:'none', border:'1px solid #2A3858', color:'#6B7A99',
+                  borderRadius:6, width:32, height:38, cursor:'pointer', fontSize:18,
+                  display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0,
+                }}
+              >×</button>
+            )}
+            {!isPro && idx > 0 && (
+              <span style={{ color:'#E91E8C', fontSize:11, whiteSpace:'nowrap', fontWeight:600 }}>Pro only</span>
+            )}
+          </div>
+        ))}
+        {isPro && companies.length < MAX && (
+          <button
+            onClick={addCompany}
+            style={{
+              background:'none', border:'1px dashed #2A3858', color:'#5B63EB',
+              borderRadius:8, padding:'8px 0', cursor:'pointer', fontSize:13,
+              fontWeight:600, width:'100%', marginTop:4,
+            }}
+          >+ Add company</button>
+        )}
       </Field>
+
       <Field label="Competitor Names (comma-separated)">
         <TagInput value={s.competitor_names||[]} onChange={v=>set({...s,competitor_names:v})} placeholder="Mahindra, Maruti Suzuki, Hyundai" />
       </Field>
@@ -347,11 +395,13 @@ function ScheduleTab({ s, set, onActivate, onStop, schedMsg }) {
 
   // stream SSE from /api/run-now, optionally with date range
   const fireRun = async (dateFrom = null, dateTo = null) => {
-    const company = s.company_name?.trim();
-    if (!company) { setRunMsg('Set a company name first.'); return; }
+    const companies  = (s.companies || []).filter(Boolean);
+    const hasCompany = companies.length > 0 || s.company_name?.trim();
+    if (!hasCompany) { setRunMsg('Set a company name first.'); return; }
     setRunState('running'); setRunMsg('');
     try {
-      const body = { company, ...(dateFrom && { date_from: dateFrom }), ...(dateTo && { date_to: dateTo }) };
+      // omit company field — backend uses settings.companies[] for multi-company runs
+      const body = { ...(dateFrom && { date_from: dateFrom }), ...(dateTo && { date_to: dateTo }) };
       const res = await fetch(`${API}/api/run-now`, {
         method: 'POST',
         headers: {

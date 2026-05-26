@@ -105,6 +105,8 @@ export function initDB() {
   // safe migrations
   try { db.exec("ALTER TABLE settings ADD COLUMN news_lookback TEXT DEFAULT '7d'"); } catch (_) {}
   try { db.exec('ALTER TABLE settings ADD COLUMN workspace_id INTEGER'); } catch (_) {}
+  try { db.exec("ALTER TABLE settings ADD COLUMN companies TEXT DEFAULT '[]'"); } catch (_) {}
+  try { db.exec("ALTER TABLE settings ADD COLUMN plan TEXT DEFAULT 'pro'"); } catch (_) {}
 
   // seed a single-user default row if none exists
   const row = db.prepare('SELECT id FROM settings WHERE id = 1').get();
@@ -145,6 +147,8 @@ export function getSettings() {
     exclude_keywords:  JSON.parse(row.exclude_keywords),
     exclude_domains:   JSON.parse(row.exclude_domains),
     sources_enabled:   JSON.parse(row.sources_enabled),
+    companies:         JSON.parse(row.companies  || '[]'),
+    plan:              row.plan || 'pro',
     llm_api_key:       row.llm_api_key ? MASKED : '',
     llm_api_key_set:   !!row.llm_api_key,
   };
@@ -161,13 +165,15 @@ export function getSettingsInternal() {
     exclude_keywords: JSON.parse(row.exclude_keywords),
     exclude_domains:  JSON.parse(row.exclude_domains),
     sources_enabled:  JSON.parse(row.sources_enabled),
+    companies:        JSON.parse(row.companies  || '[]'),
+    plan:             row.plan || 'pro',
     llm_api_key:      decrypt(row.llm_api_key),
   };
 }
 
 // update settings fields (partial update supported); AES-256 encrypts llm_api_key
 export function saveSettings(updates) {
-  const arrayFields  = ['competitor_names', 'executive_names', 'include_keywords', 'exclude_keywords', 'exclude_domains'];
+  const arrayFields  = ['competitor_names', 'executive_names', 'include_keywords', 'exclude_keywords', 'exclude_domains', 'companies'];
   const objectFields = ['sources_enabled'];
 
   const serialised = {};

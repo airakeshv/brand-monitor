@@ -3,7 +3,7 @@ import { CronExpressionParser } from 'cron-parser';
 import { fromZonedTime } from 'date-fns-tz';
 import { getDB, getSettings, getSettingsInternal, saveSettings } from '../models/user.js';
 import { runDigest } from '../services/digestService.js';
-import { sendDigestEmail } from '../services/emailService.js';
+import { sendDigestEmail, sendMultiCompanyDigestEmail } from '../services/emailService.js';
 import { sendWhatsAppDigest } from '../services/whatsappService.js';
 import { sendSlackDigest } from '../services/slackService.js';
 import { logDelivery } from '../models/deliveryLog.js';
@@ -40,10 +40,12 @@ function nextRunISO(cronExpr) {
   } catch { return null; }
 }
 
-// run digest and deliver to all enabled channels, log result, respecting pause window
+// run digest for all configured companies, deliver via all channels, log result
 async function deliverDigest(settings) {
-  const company = settings.company_name;
-  if (!company) return;
+  // build the companies list — prefer companies[] array, fall back to legacy company_name
+  const companyList = (settings.companies || []).filter(Boolean);
+  const companies   = companyList.length > 0 ? companyList : (settings.company_name ? [settings.company_name] : []);
+  if (companies.length === 0) return;
 
   const today = new Date().toISOString().slice(0, 10);
 
@@ -57,34 +59,45 @@ async function deliverDigest(settings) {
   // first day after pause ends: clear the pause window from DB
   if (settings.pause_from && settings.pause_to && today === nextDayStr(settings.pause_to)) {
     saveSettings({ pause_from: null, pause_to: null });
-    console.log(`Pause window cleared — resuming digest delivery for ${company}`);
+    console.log(`Pause window cleared — resuming digest delivery`);
   }
 
-  const { id: digest_id, digest } = await runDigest(company, settings);
+  // run all companies in parallel
+  const runs    = await Promise.all(companies.map(c => runDigest(c, settings)));
+  const digests = runs.map(r => r.digest);
 
   const results = { email_ok: null, whatsapp_ok: null, slack_ok: null };
 
   if (settings.email) {
-    const r = await sendDigestEmail(digest, settings.email);
+    // single combined email for all companies
+    const r = await sendMultiCompanyDigestEmail(digests, settings.email);
     results.email_ok = r.ok ? 1 : 0;
   }
   if (settings.whatsapp) {
-    const r = await sendWhatsAppDigest(digest, settings.whatsapp);
-    results.whatsapp_ok = r.ok ? 1 : 0;
+    // WhatsApp has char limits — one message per company
+    let ok = true;
+    for (const digest of digests) {
+      const r = await sendWhatsAppDigest(digest, settings.whatsapp);
+      if (!r.ok) ok = false;
+    }
+    results.whatsapp_ok = ok ? 1 : 0;
   }
   if (settings.slack_webhook) {
-    const r = await sendSlackDigest(digest, settings.slack_webhook);
-    results.slack_ok = r.ok ? 1 : 0;
+    let ok = true;
+    for (const digest of digests) {
+      const r = await sendSlackDigest(digest, settings.slack_webhook);
+      if (!r.ok) ok = false;
+    }
+    results.slack_ok = ok ? 1 : 0;
   }
 
   const anyConfigured = settings.email || settings.whatsapp || settings.slack_webhook;
   const allOk = [results.email_ok, results.whatsapp_ok, results.slack_ok]
-    .filter(v => v !== null)
-    .every(v => v === 1);
+    .filter(v => v !== null).every(v => v === 1);
   const status = !anyConfigured ? 'success' : allOk ? 'success' : 'partial';
 
-  logDelivery({ company, trigger: 'scheduled', status, digest_id, ...results });
-  return digest;
+  logDelivery({ company: companies[0], trigger: 'scheduled', status, digest_id: runs[0]?.id, ...results });
+  return digests;
 }
 
 // attempt delivery for a specific user — retries once after 5 minutes on failure

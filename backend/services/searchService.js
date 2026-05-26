@@ -218,3 +218,14 @@ export async function searchAll(company, settings = {}) {
   const allResults = await Promise.all(tasks);
   return allResults.flat().map(normalizeResult).filter(r => isRelevant(r, company));
 }
+
+// run searchAll for every company in the array in parallel — returns { companyName: results[] }
+export async function searchAllCompanies(companies, settings = {}) {
+  const entries = await Promise.all(
+    (companies || []).filter(Boolean).map(async company => {
+      const results = await searchAll(company, settings);
+      return [company, results];
+    })
+  );
+  return Object.fromEntries(entries);
+}
