@@ -43,5 +43,7 @@ initDigestTable();      // digests table + workspace_id column
 initDeliveryLogTable(); // delivery_log table + workspace_id column
 app.listen(PORT, () => {
   console.log(`Brand Monitor backend running on port ${PORT}`);
+  console.log('Server timezone:', Intl.DateTimeFormat().resolvedOptions().timeZone);
+  console.log('Scheduling in UTC for all users');
   scheduleDigest();
 });

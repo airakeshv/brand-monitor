@@ -7,7 +7,7 @@ import { sendWhatsAppDigest } from '../services/whatsappService.js';
 import { sendSlackDigest } from '../services/slackService.js';
 import { getDB, getSettings, getSettingsInternal, saveSettings } from '../models/user.js';
 import { getHistory, getDigestById } from '../models/digest.js';
-import { scheduleDigest, stopSchedule, getScheduleStatus } from '../scheduler/cronManager.js';
+import { scheduleDigest, rescheduleUser, stopSchedule, getScheduleStatus } from '../scheduler/cronManager.js';
 import { getDeliveryHistory } from '../models/deliveryLog.js';
 import { generateMagicToken, hashToken, signJWT, sendMagicLinkEmail } from '../services/authService.js';
 
@@ -105,11 +105,13 @@ router.get('/settings', (_req, res) => {
   }
 });
 
-// update settings (PUT or POST — both accepted) and reschedule cron
+// update settings (PUT or POST — both accepted) then reschedule only this user's cron
 function handleSaveSettings(req, res) {
   try {
     saveSettings(req.body);
-    scheduleDigest();
+    // use getSettingsInternal so the scheduler gets decrypted/parsed settings
+    const settings = getSettingsInternal();
+    rescheduleUser(req.userId, settings);
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: 'Failed to save settings' });

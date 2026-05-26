@@ -1,7 +1,7 @@
 import cron from 'node-cron';
 import { CronExpressionParser } from 'cron-parser';
 import { fromZonedTime } from 'date-fns-tz';
-import { getSettings, getSettingsInternal, saveSettings } from '../models/user.js';
+import { getDB, getSettings, getSettingsInternal, saveSettings } from '../models/user.js';
 import { runDigest } from '../services/digestService.js';
 import { sendDigestEmail } from '../services/emailService.js';
 import { sendWhatsAppDigest } from '../services/whatsappService.js';
@@ -21,11 +21,9 @@ function nextDayStr(dateStr) {
 
 // convert HH:MM + frequency + timezone to a UTC cron expression
 function toCronExpression(timeHHMM, timezone, frequency = 'daily') {
-  const [hours, minutes] = timeHHMM.split(':').map(Number);
-  const now = new Date();
-  const pad = n => String(n).padStart(2, '0');
-  const localStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(hours)}:${pad(minutes)}:00`;
-  const utc = fromZonedTime(localStr, timezone);
+  // use a fixed reference date (Jan 1 = standard time in most zones) to avoid
+  // DST-at-schedule-creation-time issues; { timezone: 'UTC' } on the job handles runtime
+  const utc = fromZonedTime(`2000-01-01T${timeHHMM}:00`, timezone);
   const m = utc.getUTCMinutes();
   const h = utc.getUTCHours();
   if (frequency === 'weekdays') return `${m} ${h} * * 1-5`;
@@ -138,15 +136,25 @@ function scheduleUser(userId, settings) {
   console.log(`Digest scheduled [user ${userId}]: ${frequency} at ${settings.delivery_time} ${timezone} → cron: ${cronExpr}`);
 }
 
-// start (or restart) the full schedule — clears ALL existing jobs first to prevent stale crons
+// start (or restart) the full schedule — clears ALL existing jobs then reloads every user from DB
 export function scheduleDigest() {
-  stopAllJobs(); // wipe everything before reloading from DB
+  stopAllJobs();
+  const db = getDB();
+  // load every settings row that has both a company and a delivery time configured
+  const rows = db.prepare(
+    'SELECT * FROM settings WHERE delivery_time IS NOT NULL AND company_name IS NOT NULL'
+  ).all();
+  rows.forEach(u => scheduleUser(u.user_id ?? u.id, u));
+}
 
-  const settings = getSettings();
-  if (!settings.company_name || !settings.delivery_time) return;
-
-  // userId 1 = seed/single-user — will be replaced with workspace loop in Task 3.7
-  scheduleUser(1, settings);
+// cancel and immediately reschedule ONE user — called after every settings save so
+// new/updated users get scheduled instantly without disrupting everyone else's jobs
+export function rescheduleUser(userId, settings) {
+  scheduleUser(userId, settings);
+  const job = activeJobs.get(userId);
+  if (job) {
+    console.log(`Rescheduled [user ${userId}] for ${settings.company_name} at ${settings.delivery_time} ${settings.timezone || 'Asia/Kolkata'}`);
+  }
 }
 
 // stop all active schedules
