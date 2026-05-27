@@ -40,6 +40,21 @@ function nextRunISO(cronExpr) {
   } catch { return null; }
 }
 
+// run one company's digest — retries once after 5 s on LLM/rate-limit failure, then skips
+async function runDigestWithRetry(company, settings, attempt = 1) {
+  try {
+    return await runDigest(company, settings);
+  } catch (err) {
+    if (attempt < 2) {
+      console.log(`Digest failed for "${company}" (attempt ${attempt}): ${err.message} — retrying in 5 s…`);
+      await new Promise(r => setTimeout(r, 5000));
+      return runDigestWithRetry(company, settings, 2);
+    }
+    console.error(`Digest failed for "${company}" after 2 attempts — skipping: ${err.message}`);
+    return null;
+  }
+}
+
 // run digest for all configured companies, deliver via all channels, log result
 async function deliverDigest(settings) {
   // build the companies list — prefer companies[] array, fall back to legacy company_name
@@ -62,8 +77,15 @@ async function deliverDigest(settings) {
     console.log(`Pause window cleared — resuming digest delivery`);
   }
 
-  // run all companies in parallel
-  const runs    = await Promise.all(companies.map(c => runDigest(c, settings)));
+  // run companies sequentially with 3 s gap — prevents Gemini free-tier rate-limit (60 req/min)
+  if (companies.length > 1) console.log(`Processing ${companies.length} companies sequentially (3 s gap)…`);
+  const runs = [];
+  for (let i = 0; i < companies.length; i++) {
+    const result = await runDigestWithRetry(companies[i], settings);
+    if (result) runs.push(result);
+    if (i < companies.length - 1) await new Promise(r => setTimeout(r, 3000));
+  }
+  if (runs.length === 0) return; // all companies failed — nothing to deliver
   const digests = runs.map(r => r.digest);
 
   const results = { email_ok: null, whatsapp_ok: null, slack_ok: null };
