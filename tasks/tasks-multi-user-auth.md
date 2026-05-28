@@ -66,26 +66,26 @@
   - [x] 2.6 In `backend/server.js` — apply auth middleware to all `/api/*` except `/api/auth/*` and `/api/ping` using a selective middleware pattern
   - [x] 2.7 Add `JWT_SECRET=` and `FRONTEND_URL=` to `.env.example`
 
-- [ ] 3.0 Backend workspace API
-  - [ ] 3.1 In `backend/routes/api.js` — add `GET /api/workspaces` (calls `getWorkspaces(req.userId)`), `POST /api/workspaces` (calls `createWorkspace`, returns new workspace + its default settings row), `DELETE /api/workspaces/:id`
-  - [ ] 3.2 Add workspace middleware to `api.js` — reads `X-Workspace-Id` header, verifies it belongs to `req.userId`, attaches `req.workspaceId`; fallback to user's first workspace if header absent
-  - [ ] 3.3 Update `getSettings(workspaceId)`, `getSettingsInternal(workspaceId)`, `saveSettings(updates, workspaceId)` in `user.js` to filter by `workspace_id` instead of `id=1`
-  - [ ] 3.4 Update all route handlers in `api.js` that call settings functions to pass `req.workspaceId`
-  - [ ] 3.5 Update `saveDigest` in `digest.js` and `logDelivery` in `deliveryLog.js` to accept and store `workspace_id`
-  - [ ] 3.6 Update `runDigest` in `digestService.js` to accept and forward `workspaceId` through to `saveDigest`
-  - [ ] 3.7 Update `cronManager.js` `deliverWithRetry` — replace single `getSettingsInternal()` call with a loop over all workspaces that have `company_name` set; schedule one cron per workspace
+- [x] 3.0 Backend workspace API
+  - [x] 3.1 In `backend/routes/api.js` — add `GET /api/workspaces` (calls `getWorkspaces(req.userId)`), `POST /api/workspaces` (calls `createWorkspace`, returns new workspace + its default settings row), `DELETE /api/workspaces/:id`
+  - [x] 3.2 Add workspace middleware to `api.js` — reads `X-Workspace-Id` header, verifies it belongs to `req.userId`, attaches `req.workspaceId`; fallback to user's first workspace if header absent
+  - [x] 3.3 Update `getSettings(workspaceId)`, `getSettingsInternal(workspaceId)`, `saveSettings(updates, workspaceId)` in `user.js` to filter by `workspace_id` instead of `id=1`
+  - [x] 3.4 Update all route handlers in `api.js` that call settings functions to pass `req.workspaceId`
+  - [x] 3.5 Update `saveDigest` in `digest.js` and `logDelivery` in `deliveryLog.js` to accept and store `workspace_id`
+  - [x] 3.6 Update `runDigest` in `digestService.js` to accept and forward `workspaceId` through to `saveDigest`
+  - [x] 3.7 Update `cronManager.js` `deliverWithRetry` — replace single `getSettingsInternal()` call with a loop over all workspaces that have `company_name` set; schedule one cron per workspace
 
-- [ ] 4.0 Frontend auth
-  - [ ] 4.1 Create `frontend/src/utils/auth.js` — `getToken()` (from localStorage), `isLoggedIn()` (token exists + not expired), `logout()` (remove from localStorage), `authHeaders()` (returns `{ Authorization: 'Bearer <token>' }`)
-  - [ ] 4.2 Create `frontend/src/pages/Login.jsx` — centered card, email input, "Send magic link" onClick handler calling `POST /api/auth/request-link`, confirmation state "Check your inbox"
-  - [ ] 4.3 Create `frontend/src/pages/AuthCallback.jsx` — on mount reads `?token` from URL, calls `GET /api/auth/verify?token=`, stores returned JWT in localStorage, redirects to `/`; shows error states for expired/invalid/used tokens
-  - [ ] 4.4 Create `frontend/src/components/AuthGuard.jsx` — calls `isLoggedIn()`, redirects to `/login` if false, renders `children` if true
-  - [ ] 4.5 In `frontend/src/App.jsx` — add `<Route path="/login" element={<Login />} />`, add `<Route path="/auth/callback" element={<AuthCallback />} />`, wrap existing routes with `<AuthGuard>`
-  - [ ] 4.6 Add `authHeaders()` to every `fetch` call in `Dashboard.jsx`, `Settings.jsx`, `History.jsx`
+- [x] 4.0 Frontend auth
+  - [x] 4.1 Create `frontend/src/utils/auth.js` — `getToken()` (from localStorage), `isLoggedIn()` (token exists + not expired), `logout()` (remove from localStorage), `authHeaders()` (returns `{ Authorization: 'Bearer <token>' }`)
+  - [x] 4.2 Create `frontend/src/pages/Login.jsx` — centered card, email input, "Send magic link" onClick handler calling `POST /api/auth/request-link`, confirmation state "Check your inbox"
+  - [x] 4.3 Create `frontend/src/pages/AuthCallback.jsx` — on mount reads `?token` from URL, calls `GET /api/auth/verify?token=`, stores returned JWT in localStorage, redirects to `/`; shows error states for expired/invalid/used tokens
+  - [x] 4.4 Create `frontend/src/components/AuthGuard.jsx` — calls `isLoggedIn()`, redirects to `/login` if false, renders `children` if true
+  - [x] 4.5 In `frontend/src/App.jsx` — add `<Route path="/login" element={<Login />} />`, add `<Route path="/auth/callback" element={<AuthCallback />} />`, wrap existing routes with `<AuthGuard>`
+  - [x] 4.6 Add `authHeaders()` to every `fetch` call in `Dashboard.jsx`, `Settings.jsx`, `History.jsx`
 
-- [ ] 5.0 Frontend workspace switcher
-  - [ ] 5.1 Create `frontend/src/context/WorkspaceContext.jsx` — React context with `workspaces` list, `activeWorkspaceId`, `setActiveWorkspace(id)`, `refreshWorkspaces()`; fetches `GET /api/workspaces` on mount; stores active id in localStorage
-  - [ ] 5.2 Create `frontend/src/components/WorkspaceSwitcher.jsx` — dropdown showing current workspace name, lists others, "＋ New workspace" option that opens an inline name-input modal calling `POST /api/workspaces`
-  - [ ] 5.3 In `frontend/src/App.jsx` — wrap app in `<WorkspaceProvider>`, add `<WorkspaceSwitcher>` to the top nav bar
-  - [ ] 5.4 Update `Dashboard.jsx`, `Settings.jsx`, `History.jsx` — read `activeWorkspaceId` from context, add `X-Workspace-Id: <id>` header to all API calls alongside `authHeaders()`
-  - [ ] 5.5 In `WorkspaceContext` — on `setActiveWorkspace` trigger a custom event or context refresh so all pages re-fetch their data for the new workspace
+- [x] 5.0 Frontend workspace switcher
+  - [x] 5.1 Create `frontend/src/context/WorkspaceContext.jsx` — React context with `workspaces` list, `activeWorkspaceId`, `setActiveWorkspace(id)`, `refreshWorkspaces()`; fetches `GET /api/workspaces` on mount; stores active id in localStorage
+  - [x] 5.2 Create `frontend/src/components/WorkspaceSwitcher.jsx` — dropdown showing current workspace name, lists others, "＋ New workspace" option that opens an inline name-input modal calling `POST /api/workspaces`
+  - [x] 5.3 In `frontend/src/App.jsx` — wrap app in `<WorkspaceProvider>`, add `<WorkspaceSwitcher>` to the top nav bar
+  - [x] 5.4 Update `Dashboard.jsx`, `Settings.jsx`, `History.jsx` — read `activeWorkspaceId` from context, add `X-Workspace-Id: <id>` header to all API calls alongside `authHeaders()`
+  - [x] 5.5 In `WorkspaceContext` — on `setActiveWorkspace` trigger a custom event or context refresh so all pages re-fetch their data for the new workspace
