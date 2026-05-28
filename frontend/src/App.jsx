@@ -5,6 +5,7 @@ import History    from './pages/History.jsx';
 import Login      from './pages/Login.jsx';
 import AuthVerify from './pages/AuthVerify.jsx';
 import Navbar     from './components/Navbar.jsx';
+import { WorkspaceProvider } from './context/WorkspaceContext.jsx';
 import './index.css';
 
 // wraps authenticated pages — redirects to /login if no JWT in localStorage
@@ -24,6 +25,7 @@ function ProtectedRoute({ children }) {
 export default function App() {
   return (
     <BrowserRouter>
+      <WorkspaceProvider>
       <Routes>
         {/* public routes */}
         <Route path="/login"       element={<Login />} />
@@ -38,6 +40,7 @@ export default function App() {
         <Route path="/settings"  element={<ProtectedRoute><Settings /></ProtectedRoute>} />
         <Route path="/history"   element={<ProtectedRoute><History /></ProtectedRoute>} />
       </Routes>
+      </WorkspaceProvider>
     </BrowserRouter>
   );
 }

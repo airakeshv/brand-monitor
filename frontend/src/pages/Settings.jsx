@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useWorkspace } from '../context/WorkspaceContext.jsx';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 const TABS = ['Company', 'Sources', 'LLM', 'Delivery', 'Schedule'];
@@ -402,11 +403,13 @@ function ScheduleTab({ s, set, onActivate, onStop, schedMsg }) {
     try {
       // omit company field — backend uses settings.companies[] for multi-company runs
       const body = { ...(dateFrom && { date_from: dateFrom }), ...(dateTo && { date_to: dateTo }) };
+      const wsId = localStorage.getItem('bm_workspace_id') || '';
       const res = await fetch(`${API}/api/run-now`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + localStorage.getItem('bm_token'),
+          'Content-Type':   'application/json',
+          'Authorization':  'Bearer ' + localStorage.getItem('bm_token'),
+          'X-Workspace-Id': wsId,
         },
         body: JSON.stringify(body),
       });
@@ -686,6 +689,7 @@ function ScheduleTab({ s, set, onActivate, onStop, schedMsg }) {
 
 /* ── Main Settings page ── */
 export default function Settings() {
+  const { activeWorkspaceId } = useWorkspace();
   const [tab,      setTab]      = useState(0);
   const [settings, setSettings] = useState({});
   const [loaded,   setLoaded]   = useState(false);
@@ -693,20 +697,26 @@ export default function Settings() {
   const [saved,    setSaved]    = useState(false);
   const [schedMsg, setSchedMsg] = useState(null);
 
+  // helper: auth + workspace headers
+  const wsHeaders = (extra = {}) => ({
+    'Content-Type':   'application/json',
+    'Authorization':  'Bearer ' + localStorage.getItem('bm_token'),
+    'X-Workspace-Id': String(activeWorkspaceId || ''),
+    ...extra,
+  });
+
+  // load settings — reload when workspace changes
   useEffect(() => {
-    fetch(`${API}/api/settings`, {
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + localStorage.getItem('bm_token'),
-      },
-    })
+    if (!activeWorkspaceId) return;
+    setLoaded(false);
+    fetch(`${API}/api/settings`, { headers: wsHeaders() })
       .then(r => r.json())
       .then(d => {
         // auto-detect timezone and default delivery time on first-ever setup
         if (!d.company_name) {
           const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
           if (tz) {
-            d.timezone     = tz;
+            d.timezone      = tz;
             d.delivery_time =
               tz.startsWith('America/') ? '06:30' :
               tz.startsWith('Europe/')  ? '07:00' : '08:00';
@@ -716,17 +726,14 @@ export default function Settings() {
         setLoaded(true);
       })
       .catch(() => setLoaded(true));
-  }, []);
+  }, [activeWorkspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSave = async () => {
     setSaving(true); setSaved(false);
     try {
       const r = await fetch(`${API}/api/settings`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + localStorage.getItem('bm_token'),
-        },
+        headers: wsHeaders(),
         body: JSON.stringify(settings),
       });
       if (r.ok) { setSaved(true); setTimeout(() => setSaved(false), 3000); }
@@ -739,28 +746,22 @@ export default function Settings() {
     try {
       const r = await fetch(`${API}/api/schedule`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + localStorage.getItem('bm_token'),
-        },
+        headers: wsHeaders(),
       });
       const j = await r.json();
       setSchedMsg({ ok: r.ok, message: j.message || j.error });
-    } catch (e) { setSchedMsg({ ok:false, message: e.message }); }
+    } catch (e) { setSchedMsg({ ok: false, message: e.message }); }
   };
 
   const handleStop = async () => {
     try {
       const r = await fetch(`${API}/api/schedule`, {
         method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + localStorage.getItem('bm_token'),
-        },
+        headers: wsHeaders(),
       });
       const j = await r.json();
       setSchedMsg({ ok: r.ok, message: j.message || j.error });
-    } catch (e) { setSchedMsg({ ok:false, message: e.message }); }
+    } catch (e) { setSchedMsg({ ok: false, message: e.message }); }
   };
 
   if (!loaded) {

@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom';
+import WorkspaceSwitcher from './WorkspaceSwitcher.jsx';
 
 const navClass = ({ isActive }) =>
   `px-4 py-2 text-sm font-medium rounded-md transition-colors ${
@@ -41,6 +42,7 @@ export default function Navbar() {
 
       {/* User + logout */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <WorkspaceSwitcher />
         {email && (
           <span style={{ color: '#6B7A99', fontSize: 13 }}>{email}</span>
         )}

@@ -17,11 +17,11 @@ export function initDigestTable() {
   try { db.exec('ALTER TABLE digests ADD COLUMN workspace_id INTEGER'); } catch (_) {}
 }
 
-// save a new digest to history
-export function saveDigest({ company, date, model_used, json }) {
+// save a new digest — workspace_id ties it to the correct workspace
+export function saveDigest({ company, date, model_used, json, workspaceId }) {
   return getDB()
-    .prepare('INSERT INTO digests (company, date, model_used, json) VALUES (?, ?, ?, ?)')
-    .run(company, date, model_used, JSON.stringify(json));
+    .prepare('INSERT INTO digests (company, date, model_used, json, workspace_id) VALUES (?, ?, ?, ?, ?)')
+    .run(company, date, model_used, JSON.stringify(json), workspaceId || null);
 }
 
 // mark a digest as delivered
@@ -31,20 +31,25 @@ export function markDelivered(id) {
     .run(id);
 }
 
-// get last N digests (default 30) — includes parsed digest for preview
-export function getHistory(limit = 30) {
-  return getDB()
-    .prepare('SELECT id, company, date, model_used, delivered_at, created_at, json FROM digests ORDER BY created_at DESC LIMIT ?')
-    .all(limit)
-    .map(row => {
-      const digest = JSON.parse(row.json || '{}');
-      return { ...row, digest, company: row.company || digest.company || '' };
-    });
+// get last N digests for a workspace — includes parsed digest for preview
+export function getHistory(limit = 30, workspaceId = null) {
+  const query = workspaceId
+    ? 'SELECT id, company, date, model_used, delivered_at, created_at, json FROM digests WHERE workspace_id = ? ORDER BY created_at DESC LIMIT ?'
+    : 'SELECT id, company, date, model_used, delivered_at, created_at, json FROM digests ORDER BY created_at DESC LIMIT ?';
+  const rows = workspaceId
+    ? getDB().prepare(query).all(workspaceId, limit)
+    : getDB().prepare(query).all(limit);
+  return rows.map(row => {
+    const digest = JSON.parse(row.json || '{}');
+    return { ...row, digest, company: row.company || digest.company || '' };
+  });
 }
 
-// get a single digest with full JSON
-export function getDigestById(id) {
-  const row = getDB().prepare('SELECT * FROM digests WHERE id = ?').get(id);
+// get a single digest — optionally verify it belongs to the workspace
+export function getDigestById(id, workspaceId = null) {
+  const row = workspaceId
+    ? getDB().prepare('SELECT * FROM digests WHERE id = ? AND workspace_id = ?').get(id, workspaceId)
+    : getDB().prepare('SELECT * FROM digests WHERE id = ?').get(id);
   if (!row) return null;
   return { ...row, json: JSON.parse(row.json) };
 }

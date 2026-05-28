@@ -1,15 +1,15 @@
 import cron from 'node-cron';
 import { CronExpressionParser } from 'cron-parser';
 import { fromZonedTime } from 'date-fns-tz';
-import { getDB, getSettings, getSettingsInternal, saveSettings } from '../models/user.js';
+import { getDB, getSettingsInternal, saveSettings } from '../models/user.js';
 import { runDigest } from '../services/digestService.js';
-import { sendDigestEmail, sendMultiCompanyDigestEmail } from '../services/emailService.js';
+import { sendMultiCompanyDigestEmail } from '../services/emailService.js';
 import { sendWhatsAppDigest } from '../services/whatsappService.js';
 import { sendSlackDigest } from '../services/slackService.js';
 import { logDelivery } from '../models/deliveryLog.js';
 
-// Map of userId → { task: CronJob, cronExpr: string }
-// Using a Map prevents duplicate schedules — each userId can have exactly one active job
+// Map of workspaceId → { task: CronJob, cronExpr: string }
+// Each workspace gets exactly one active cron job
 const activeJobs = new Map();
 
 // returns the YYYY-MM-DD string for the day after a given YYYY-MM-DD
@@ -21,8 +21,7 @@ function nextDayStr(dateStr) {
 
 // convert HH:MM + frequency + timezone to a UTC cron expression
 function toCronExpression(timeHHMM, timezone, frequency = 'daily') {
-  // use a fixed reference date (Jan 1 = standard time in most zones) to avoid
-  // DST-at-schedule-creation-time issues; { timezone: 'UTC' } on the job handles runtime
+  // use a fixed reference date to avoid DST-at-schedule-creation-time issues
   const utc = fromZonedTime(`2000-01-01T${timeHHMM}:00`, timezone);
   const m = utc.getUTCMinutes();
   const h = utc.getUTCHours();
@@ -41,23 +40,22 @@ function nextRunISO(cronExpr) {
 }
 
 // run one company's digest — retries once after 5 s on LLM/rate-limit failure, then skips
-async function runDigestWithRetry(company, settings, attempt = 1) {
+async function runDigestWithRetry(company, settings, workspaceId, attempt = 1) {
   try {
-    return await runDigest(company, settings);
+    return await runDigest(company, settings, null, workspaceId);
   } catch (err) {
     if (attempt < 2) {
       console.log(`Digest failed for "${company}" (attempt ${attempt}): ${err.message} — retrying in 5 s…`);
       await new Promise(r => setTimeout(r, 5000));
-      return runDigestWithRetry(company, settings, 2);
+      return runDigestWithRetry(company, settings, workspaceId, 2);
     }
     console.error(`Digest failed for "${company}" after 2 attempts — skipping: ${err.message}`);
     return null;
   }
 }
 
-// run digest for all configured companies, deliver via all channels, log result
-async function deliverDigest(settings) {
-  // build the companies list — prefer companies[] array, fall back to legacy company_name
+// run digest for all companies in a workspace, deliver via all channels, log result
+async function deliverDigest(settings, workspaceId) {
   const companyList = (settings.companies || []).filter(Boolean);
   const companies   = companyList.length > 0 ? companyList : (settings.company_name ? [settings.company_name] : []);
   if (companies.length === 0) return;
@@ -67,36 +65,34 @@ async function deliverDigest(settings) {
   // skip delivery if today is within the pause window
   if (settings.pause_from && settings.pause_to
       && today >= settings.pause_from && today <= settings.pause_to) {
-    console.log(`Digest delivery paused — resumes after ${settings.pause_to}`);
+    console.log(`[ws ${workspaceId}] Digest delivery paused — resumes after ${settings.pause_to}`);
     return;
   }
 
   // first day after pause ends: clear the pause window from DB
   if (settings.pause_from && settings.pause_to && today === nextDayStr(settings.pause_to)) {
-    saveSettings({ pause_from: null, pause_to: null });
-    console.log(`Pause window cleared — resuming digest delivery`);
+    saveSettings({ pause_from: null, pause_to: null }, workspaceId);
+    console.log(`[ws ${workspaceId}] Pause window cleared — resuming digest delivery`);
   }
 
   // run companies sequentially with 3 s gap — prevents Gemini free-tier rate-limit (60 req/min)
-  if (companies.length > 1) console.log(`Processing ${companies.length} companies sequentially (3 s gap)…`);
+  if (companies.length > 1) console.log(`[ws ${workspaceId}] Processing ${companies.length} companies sequentially (3 s gap)…`);
   const runs = [];
   for (let i = 0; i < companies.length; i++) {
-    const result = await runDigestWithRetry(companies[i], settings);
+    const result = await runDigestWithRetry(companies[i], settings, workspaceId);
     if (result) runs.push(result);
     if (i < companies.length - 1) await new Promise(r => setTimeout(r, 3000));
   }
-  if (runs.length === 0) return; // all companies failed — nothing to deliver
+  if (runs.length === 0) return;
   const digests = runs.map(r => r.digest);
 
   const results = { email_ok: null, whatsapp_ok: null, slack_ok: null };
 
   if (settings.email) {
-    // single combined email for all companies
     const r = await sendMultiCompanyDigestEmail(digests, settings.email);
     results.email_ok = r.ok ? 1 : 0;
   }
   if (settings.whatsapp) {
-    // WhatsApp has char limits — one message per company
     let ok = true;
     for (const digest of digests) {
       const r = await sendWhatsAppDigest(digest, settings.whatsapp);
@@ -118,26 +114,34 @@ async function deliverDigest(settings) {
     .filter(v => v !== null).every(v => v === 1);
   const status = !anyConfigured ? 'success' : allOk ? 'success' : 'partial';
 
-  logDelivery({ company: companies[0], trigger: 'scheduled', status, digest_id: runs[0]?.id, ...results });
+  logDelivery({
+    company:      companies[0],
+    trigger:      'scheduled',
+    status,
+    digest_id:    runs[0]?.id,
+    workspace_id: workspaceId,
+    ...results,
+  });
   return digests;
 }
 
-// attempt delivery for a specific user — retries once after 5 minutes on failure
-async function deliverWithRetry(userId, attempt = 1) {
-  const settings = getSettingsInternal();
+// attempt delivery for a specific workspace — retries once after 5 minutes on failure
+async function deliverWithRetry(workspaceId, attempt = 1) {
+  const settings = getSettingsInternal(workspaceId);
   try {
-    await deliverDigest(settings);
+    await deliverDigest(settings, workspaceId);
   } catch (err) {
-    console.error(`Scheduled digest failed [user ${userId}] (attempt ${attempt}): ${err.message}`);
+    console.error(`Scheduled digest failed [ws ${workspaceId}] (attempt ${attempt}): ${err.message}`);
     if (attempt < 2) {
       console.log('Retrying in 5 minutes…');
-      setTimeout(() => deliverWithRetry(userId, 2), 5 * 60 * 1000);
+      setTimeout(() => deliverWithRetry(workspaceId, 2), 5 * 60 * 1000);
     } else {
       logDelivery({
-        company: settings.company_name || 'unknown',
-        trigger: 'scheduled',
-        status:  'failed',
-        error:   err.message,
+        company:      settings.company_name || 'unknown',
+        trigger:      'scheduled',
+        status:       'failed',
+        error:        err.message,
+        workspace_id: workspaceId,
       });
     }
   }
@@ -151,12 +155,12 @@ function stopAllJobs() {
   activeJobs.clear();
 }
 
-// schedule one user's digest — cancels any existing job for that userId first
-function scheduleUser(userId, settings) {
-  // cancel existing job for this userId to prevent duplicates
-  if (activeJobs.has(userId)) {
-    activeJobs.get(userId).task.stop();
-    activeJobs.delete(userId);
+// schedule one workspace's digest — cancels any existing job for that workspaceId first
+function scheduleWorkspace(workspaceId, settings) {
+  // cancel existing job to prevent duplicates
+  if (activeJobs.has(workspaceId)) {
+    activeJobs.get(workspaceId).task.stop();
+    activeJobs.delete(workspaceId);
   }
 
   if (!settings.company_name || !settings.delivery_time) return;
@@ -165,30 +169,29 @@ function scheduleUser(userId, settings) {
   const frequency = settings.frequency || 'daily';
   const cronExpr  = toCronExpression(settings.delivery_time, timezone, frequency);
 
-  // always pass { timezone: 'UTC' } so Railway server local time never affects firing
-  const task = cron.schedule(cronExpr, () => deliverWithRetry(userId), { timezone: 'UTC' });
-  activeJobs.set(userId, { task, cronExpr });
-  console.log(`Digest scheduled [user ${userId}]: ${frequency} at ${settings.delivery_time} ${timezone} → cron: ${cronExpr}`);
+  // always pass { timezone: 'UTC' } so server local time never affects firing
+  const task = cron.schedule(cronExpr, () => deliverWithRetry(workspaceId), { timezone: 'UTC' });
+  activeJobs.set(workspaceId, { task, cronExpr });
+  console.log(`Digest scheduled [ws ${workspaceId}]: ${frequency} at ${settings.delivery_time} ${timezone} → cron: ${cronExpr}`);
 }
 
-// start (or restart) the full schedule — clears ALL existing jobs then reloads every user from DB
+// start (or restart) the full schedule — clears ALL jobs then reloads every workspace from DB
 export function scheduleDigest() {
   stopAllJobs();
   const db = getDB();
   // load every settings row that has both a company and a delivery time configured
   const rows = db.prepare(
-    'SELECT * FROM settings WHERE delivery_time IS NOT NULL AND company_name IS NOT NULL'
+    'SELECT * FROM settings WHERE delivery_time IS NOT NULL AND company_name IS NOT NULL AND workspace_id IS NOT NULL'
   ).all();
-  rows.forEach(u => scheduleUser(u.user_id ?? u.id, u));
+  rows.forEach(row => scheduleWorkspace(row.workspace_id, row));
 }
 
-// cancel and immediately reschedule ONE user — called after every settings save so
-// new/updated users get scheduled instantly without disrupting everyone else's jobs
-export function rescheduleUser(userId, settings) {
-  scheduleUser(userId, settings);
-  const job = activeJobs.get(userId);
+// cancel and immediately reschedule ONE workspace — called after every settings save
+export function rescheduleWorkspace(workspaceId, settings) {
+  scheduleWorkspace(workspaceId, settings);
+  const job = activeJobs.get(workspaceId);
   if (job) {
-    console.log(`Rescheduled [user ${userId}] for ${settings.company_name} at ${settings.delivery_time} ${settings.timezone || 'Asia/Kolkata'}`);
+    console.log(`Rescheduled [ws ${workspaceId}] for ${settings.company_name} at ${settings.delivery_time} ${settings.timezone || 'Asia/Kolkata'}`);
   }
 }
 
@@ -197,14 +200,12 @@ export function stopSchedule() {
   stopAllJobs();
 }
 
-// return current scheduler state for the status API
-export function getScheduleStatus() {
-  if (activeJobs.size === 0) return { active: false };
-
-  const settings = getSettings();
-  const job      = activeJobs.get(1); // single-user for now; extended in Task 3.7
+// return current scheduler state for a specific workspace
+export function getScheduleStatus(workspaceId) {
+  const job = workspaceId ? activeJobs.get(workspaceId) : null;
   if (!job) return { active: false };
 
+  const settings = getSettingsInternal(workspaceId);
   return {
     active:        true,
     cron:          job.cronExpr,

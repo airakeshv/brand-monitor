@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useWorkspace } from '../context/WorkspaceContext.jsx';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
@@ -114,6 +115,7 @@ function DigestDisplay({ digest }) {
 
 // streams SSE from /api/run-now, calls onDigest when done
 export default function RunNow({ company, dateFrom, dateTo, onDigest }) {
+  const { activeWorkspaceId } = useWorkspace();
   const [state,  setState]  = useState('idle'); // idle | running | done | error
   const [log,    setLog]    = useState([]);
   const [err,    setErr]    = useState('');
@@ -130,8 +132,9 @@ export default function RunNow({ company, dateFrom, dateTo, onDigest }) {
       const res = await fetch(`${API}/api/run-now`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + localStorage.getItem('bm_token'),
+          'Content-Type':   'application/json',
+          'Authorization':  'Bearer ' + localStorage.getItem('bm_token'),
+          'X-Workspace-Id': String(activeWorkspaceId || ''),
         },
         body: JSON.stringify({
           company: company.trim(),

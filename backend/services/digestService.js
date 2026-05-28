@@ -72,7 +72,7 @@ function normaliseSections(digest) {
 }
 
 // run a full digest: search → filter → prompt → LLM → validate → save
-export async function runDigest(company, settings = {}, onProgress = null) {
+export async function runDigest(company, settings = {}, onProgress = null, workspaceId = null) {
   const model   = settings.llm_model  || 'gemini-2.5-flash';
   const apiKey  = settings.llm_api_key || '';
 
@@ -94,6 +94,7 @@ export async function runDigest(company, settings = {}, onProgress = null) {
     date:       digest.date,
     model_used: digest.model_used,
     json:       digest,
+    workspaceId,
   });
 
   onProgress?.('Digest saved.');

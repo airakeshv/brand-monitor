@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import DigestPreview from '../components/DigestPreview.jsx';
+import { useWorkspace } from '../context/WorkspaceContext.jsx';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
@@ -61,25 +62,26 @@ function DigestRow({ row, onSelect, isSelected }) {
 
 // past digests list + inline preview
 export default function History() {
+  const { activeWorkspaceId } = useWorkspace();
   const [rows,     setRows]     = useState([]);
   const [selected, setSelected] = useState(null);
   const [loading,  setLoading]  = useState(true);
 
-  // load history on mount
+  // load history — reload when workspace changes
   useEffect(() => {
+    if (!activeWorkspaceId) return;
+    setLoading(true); setSelected(null);
     fetch(`${API}/api/history`, {
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + localStorage.getItem('bm_token'),
+        'Content-Type':   'application/json',
+        'Authorization':  'Bearer ' + localStorage.getItem('bm_token'),
+        'X-Workspace-Id': String(activeWorkspaceId),
       },
     })
       .then(r => r.json())
-      .then(data => {
-        setRows(Array.isArray(data) ? data : []);
-        setLoading(false);
-      })
+      .then(data => { setRows(Array.isArray(data) ? data : []); setLoading(false); })
       .catch(() => setLoading(false));
-  }, []);
+  }, [activeWorkspaceId]);
 
   const handleSelect = row => {
     setSelected(selected?.id === row.id ? null : row);

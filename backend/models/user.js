@@ -136,52 +136,70 @@ export function runSeedMigration() {
   db.prepare('UPDATE settings SET workspace_id = 1 WHERE id = 1 AND workspace_id IS NULL').run();
 }
 
-// get the single user's settings — API key is masked for client safety
-export function getSettings() {
-  const row = getDB().prepare('SELECT * FROM settings WHERE id = 1').get();
+// default empty settings shape — returned when a workspace has no settings row yet
+function emptySettings(extras = {}) {
+  return {
+    company_name: '', competitor_names: [], executive_names: [],
+    include_keywords: [], exclude_keywords: [], exclude_domains: [],
+    llm_model: 'gemini-2.5-flash', llm_api_key: '', llm_api_key_set: false,
+    fallback_model: 'gemini-2.5-flash', digest_language: 'English',
+    timezone: 'Asia/Kolkata', delivery_time: '08:00', frequency: 'daily',
+    pause_from: null, pause_to: null, email: '', whatsapp: '',
+    slack_webhook: '', dev_webhook: '', crisis_sensitivity: 'medium',
+    review_threshold: 3, sources_enabled: {}, companies: [], plan: 'pro',
+    news_lookback: '7d', ...extras,
+  };
+}
+
+// get workspace settings — API key masked for client safety
+export function getSettings(workspaceId) {
+  const row = getDB().prepare('SELECT * FROM settings WHERE workspace_id = ?').get(workspaceId);
+  if (!row) return emptySettings();
   return {
     ...row,
-    competitor_names:  JSON.parse(row.competitor_names),
-    executive_names:   JSON.parse(row.executive_names),
-    include_keywords:  JSON.parse(row.include_keywords),
-    exclude_keywords:  JSON.parse(row.exclude_keywords),
-    exclude_domains:   JSON.parse(row.exclude_domains),
-    sources_enabled:   JSON.parse(row.sources_enabled),
-    companies:         JSON.parse(row.companies  || '[]'),
+    competitor_names:  JSON.parse(row.competitor_names  || '[]'),
+    executive_names:   JSON.parse(row.executive_names   || '[]'),
+    include_keywords:  JSON.parse(row.include_keywords  || '[]'),
+    exclude_keywords:  JSON.parse(row.exclude_keywords  || '[]'),
+    exclude_domains:   JSON.parse(row.exclude_domains   || '[]'),
+    sources_enabled:   JSON.parse(row.sources_enabled   || '{}'),
+    companies:         JSON.parse(row.companies         || '[]'),
     plan:              row.plan || 'pro',
     llm_api_key:       row.llm_api_key ? MASKED : '',
     llm_api_key_set:   !!row.llm_api_key,
   };
 }
 
-// get settings with the real decrypted API key — for internal service use only
-export function getSettingsInternal() {
-  const row = getDB().prepare('SELECT * FROM settings WHERE id = 1').get();
+// get workspace settings with decrypted API key — for internal service use only
+export function getSettingsInternal(workspaceId) {
+  const row = getDB().prepare('SELECT * FROM settings WHERE workspace_id = ?').get(workspaceId);
+  if (!row) return emptySettings();
   return {
     ...row,
-    competitor_names: JSON.parse(row.competitor_names),
-    executive_names:  JSON.parse(row.executive_names),
-    include_keywords: JSON.parse(row.include_keywords),
-    exclude_keywords: JSON.parse(row.exclude_keywords),
-    exclude_domains:  JSON.parse(row.exclude_domains),
-    sources_enabled:  JSON.parse(row.sources_enabled),
-    companies:        JSON.parse(row.companies  || '[]'),
+    competitor_names: JSON.parse(row.competitor_names  || '[]'),
+    executive_names:  JSON.parse(row.executive_names   || '[]'),
+    include_keywords: JSON.parse(row.include_keywords  || '[]'),
+    exclude_keywords: JSON.parse(row.exclude_keywords  || '[]'),
+    exclude_domains:  JSON.parse(row.exclude_domains   || '[]'),
+    sources_enabled:  JSON.parse(row.sources_enabled   || '{}'),
+    companies:        JSON.parse(row.companies         || '[]'),
     plan:             row.plan || 'pro',
     llm_api_key:      decrypt(row.llm_api_key),
   };
 }
 
-// update settings fields (partial update supported); AES-256 encrypts llm_api_key
-export function saveSettings(updates) {
+// update workspace settings (partial update supported); AES-256 encrypts llm_api_key
+export function saveSettings(updates, workspaceId) {
   const arrayFields  = ['competitor_names', 'executive_names', 'include_keywords', 'exclude_keywords', 'exclude_domains', 'companies'];
   const objectFields = ['sources_enabled'];
 
   const serialised = {};
   for (const [k, v] of Object.entries(updates)) {
-    if (k === 'llm_api_key_set') continue; // read-only computed field — never store
+    if (k === 'llm_api_key_set') continue;  // read-only computed field — never store
+    if (k === 'workspace_id')    continue;  // never allow overwriting workspace ownership
     if (k === 'llm_api_key') {
-      if (!v || v === MASKED) continue; // masked sentinel or blank → keep existing encrypted value
-      serialised[k] = encrypt(v);      // new key provided → encrypt before storing
+      if (!v || v === MASKED) continue;     // masked sentinel or blank → keep existing
+      serialised[k] = encrypt(v);
     } else if (arrayFields.includes(k) || objectFields.includes(k)) {
       serialised[k] = JSON.stringify(v);
     } else {
@@ -191,5 +209,6 @@ export function saveSettings(updates) {
 
   if (Object.keys(serialised).length === 0) return;
   const cols = Object.keys(serialised).map(k => `${k} = @${k}`).join(', ');
-  getDB().prepare(`UPDATE settings SET ${cols} WHERE id = 1`).run(serialised);
+  // use _wsId as named param to avoid collision with any field named workspace_id
+  getDB().prepare(`UPDATE settings SET ${cols} WHERE workspace_id = @_wsId`).run({ ...serialised, _wsId: workspaceId });
 }

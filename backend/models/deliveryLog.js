@@ -20,23 +20,24 @@ export function initDeliveryLogTable() {
   try { db.exec('ALTER TABLE delivery_log ADD COLUMN workspace_id INTEGER'); } catch (_) {}
 }
 
-// insert one delivery attempt record
-export function logDelivery({ company, trigger = 'scheduled', status, email_ok, whatsapp_ok, slack_ok, error, digest_id }) {
+// insert one delivery attempt record — workspace_id scopes it to the correct workspace
+export function logDelivery({ company, trigger = 'scheduled', status, email_ok, whatsapp_ok, slack_ok, error, digest_id, workspace_id }) {
   getDB().prepare(`
     INSERT INTO delivery_log
-      (company, run_at, trigger, status, email_ok, whatsapp_ok, slack_ok, error, digest_id)
+      (company, run_at, trigger, status, email_ok, whatsapp_ok, slack_ok, error, digest_id, workspace_id)
     VALUES
-      (@company, @run_at, @trigger, @status, @email_ok, @whatsapp_ok, @slack_ok, @error, @digest_id)
+      (@company, @run_at, @trigger, @status, @email_ok, @whatsapp_ok, @slack_ok, @error, @digest_id, @workspace_id)
   `).run({
     company,
-    run_at:      new Date().toISOString(),
+    run_at:       new Date().toISOString(),
     trigger,
     status,
-    email_ok:    email_ok    ?? null,
-    whatsapp_ok: whatsapp_ok ?? null,
-    slack_ok:    slack_ok    ?? null,
-    error:       error       || null,
-    digest_id:   digest_id   || null,
+    email_ok:     email_ok    ?? null,
+    whatsapp_ok:  whatsapp_ok ?? null,
+    slack_ok:     slack_ok    ?? null,
+    error:        error       || null,
+    digest_id:    digest_id   || null,
+    workspace_id: workspace_id || null,
   });
 }
 
@@ -45,7 +46,10 @@ export function getLastDelivery() {
   return getDB().prepare('SELECT * FROM delivery_log ORDER BY id DESC LIMIT 1').get() || null;
 }
 
-// fetch the last N delivery log entries
-export function getDeliveryHistory(limit = 30) {
+// fetch the last N delivery log entries for a workspace
+export function getDeliveryHistory(limit = 30, workspaceId = null) {
+  if (workspaceId) {
+    return getDB().prepare('SELECT * FROM delivery_log WHERE workspace_id = ? ORDER BY id DESC LIMIT ?').all(workspaceId, limit);
+  }
   return getDB().prepare('SELECT * FROM delivery_log ORDER BY id DESC LIMIT ?').all(limit);
 }

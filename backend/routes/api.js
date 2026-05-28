@@ -7,9 +7,10 @@ import { sendWhatsAppDigest } from '../services/whatsappService.js';
 import { sendSlackDigest } from '../services/slackService.js';
 import { getDB, getSettings, getSettingsInternal, saveSettings } from '../models/user.js';
 import { getHistory, getDigestById } from '../models/digest.js';
-import { scheduleDigest, rescheduleUser, stopSchedule, getScheduleStatus } from '../scheduler/cronManager.js';
+import { scheduleDigest, rescheduleWorkspace, stopSchedule, getScheduleStatus } from '../scheduler/cronManager.js';
 import { getDeliveryHistory } from '../models/deliveryLog.js';
 import { generateMagicToken, hashToken, signJWT, sendMagicLinkEmail } from '../services/authService.js';
+import { getWorkspaces, createWorkspace, deleteWorkspace } from '../models/workspace.js';
 
 const router = Router();
 
@@ -49,7 +50,7 @@ router.get('/auth/verify', (req, res) => {
     const hash = hashToken(token);
     const row  = db.prepare('SELECT * FROM magic_tokens WHERE token_hash = ? AND used = 0').get(hash);
 
-    if (!row)                                 return res.status(401).json({ error: 'Invalid or already used link' });
+    if (!row)                                  return res.status(401).json({ error: 'Invalid or already used link' });
     if (new Date(row.expires_at) < new Date()) return res.status(401).json({ error: 'Link has expired. Request a new one.' });
 
     db.prepare('UPDATE magic_tokens SET used = 1 WHERE id = ?').run(row.id);
@@ -63,14 +64,89 @@ router.get('/auth/verify', (req, res) => {
   }
 });
 
+// ─── Workspace middleware ─────────────────────────────────────────────────────
+// resolve req.workspaceId for every authenticated route — auto-creates workspace for new users
+async function resolveWorkspace(req, res, next) {
+  try {
+    const db          = getDB();
+    const headerWsId  = parseInt(req.headers['x-workspace-id']);
+
+    if (headerWsId && !isNaN(headerWsId)) {
+      // verify the workspace actually belongs to this user
+      const ws = db.prepare('SELECT id FROM workspaces WHERE id = ? AND user_id = ?').get(headerWsId, req.userId);
+      if (!ws) return res.status(403).json({ error: 'Workspace not found or access denied' });
+      req.workspaceId = headerWsId;
+    } else {
+      // find user's first workspace — auto-create one if they have none (new user)
+      let ws = db.prepare('SELECT id FROM workspaces WHERE user_id = ? ORDER BY id ASC LIMIT 1').get(req.userId);
+      if (!ws) {
+        const user = db.prepare('SELECT email FROM users WHERE id = ?').get(req.userId);
+        const name  = (user?.email || 'user').split('@')[0];
+        ws = createWorkspace(req.userId, name);
+      }
+      req.workspaceId = ws.id;
+    }
+    next();
+  } catch (err) {
+    console.error('Workspace resolution failed:', err.message);
+    res.status(500).json({ error: 'Workspace resolution failed' });
+  }
+}
+
+// apply workspace middleware to every route that needs it (all except auth + ping)
+router.use((req, res, next) => {
+  if (req.path.startsWith('/auth/') || req.path === '/ping') return next();
+  return resolveWorkspace(req, res, next);
+});
+
+// ─── Workspace CRUD ───────────────────────────────────────────────────────────
+
+// list all workspaces belonging to the authenticated user
+router.get('/workspaces', (req, res) => {
+  try {
+    res.json(getWorkspaces(req.userId));
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load workspaces' });
+  }
+});
+
+// create a new workspace (and its default settings row)
+router.post('/workspaces', (req, res) => {
+  try {
+    const { name } = req.body;
+    if (!name?.trim()) return res.status(400).json({ error: 'name is required' });
+    const ws = createWorkspace(req.userId, name.trim());
+    res.json(ws);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to create workspace' });
+  }
+});
+
+// delete a workspace — only the owner can delete; rejects if it's the last workspace
+router.delete('/workspaces/:id', (req, res) => {
+  try {
+    const db   = getDB();
+    const wsId = parseInt(req.params.id);
+    const remaining = db.prepare('SELECT COUNT(*) as n FROM workspaces WHERE user_id = ?').get(req.userId).n;
+    if (remaining <= 1) return res.status(400).json({ error: 'Cannot delete your only workspace' });
+    const ok = deleteWorkspace(wsId, req.userId);
+    if (!ok) return res.status(404).json({ error: 'Workspace not found' });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete workspace' });
+  }
+});
+
+// ─── Search ───────────────────────────────────────────────────────────────────
+
 // search all sources for a company name
 router.post('/search', async (req, res) => {
   try {
     const { company } = req.body;
     if (!company) return res.status(400).json({ error: 'company is required' });
 
-    const settings = getSettingsInternal();
-    const raw = await searchAll(company, settings);
+    const settings = getSettingsInternal(req.workspaceId);
+    const raw      = await searchAll(company, settings);
     const filtered = applyNoiseFilter(raw, settings);
 
     res.json({ company, count: filtered.length, results: filtered });
@@ -80,14 +156,16 @@ router.post('/search', async (req, res) => {
   }
 });
 
+// ─── Digest ───────────────────────────────────────────────────────────────────
+
 // generate a digest for a company using the chosen model
 router.post('/digest', async (req, res) => {
   try {
     const { company, model, apiKey } = req.body;
     if (!company) return res.status(400).json({ error: 'company is required' });
 
-    const settings = { ...getSettingsInternal(), ...(model && { llm_model: model }), ...(apiKey && { llm_api_key: apiKey }) };
-    const { id, digest } = await runDigest(company, settings);
+    const settings = { ...getSettingsInternal(req.workspaceId), ...(model && { llm_model: model }), ...(apiKey && { llm_api_key: apiKey }) };
+    const { id, digest } = await runDigest(company, settings, null, req.workspaceId);
 
     res.json({ id, digest });
   } catch (err) {
@@ -96,21 +174,23 @@ router.post('/digest', async (req, res) => {
   }
 });
 
-// get settings
-router.get('/settings', (_req, res) => {
+// ─── Settings ─────────────────────────────────────────────────────────────────
+
+// get workspace settings
+router.get('/settings', (req, res) => {
   try {
-    res.json(getSettings());
+    res.json(getSettings(req.workspaceId));
   } catch (err) {
     res.status(500).json({ error: 'Failed to load settings' });
   }
 });
 
-// update settings (PUT or POST — both accepted) then reschedule only this user's cron
+// update workspace settings then reschedule only this workspace's cron
 function handleSaveSettings(req, res) {
   try {
     // plan limit: free = 1 company max, pro = 5 companies max
     if (Array.isArray(req.body.companies)) {
-      const current      = getSettings();
+      const current      = getSettings(req.workspaceId);
       const plan         = current.plan || 'pro';
       const maxCompanies = plan === 'pro' ? 5 : 1;
       const active       = req.body.companies.filter(Boolean);
@@ -118,10 +198,9 @@ function handleSaveSettings(req, res) {
         return res.status(403).json({ error: 'Upgrade to Pro to track more than 1 company' });
       }
     }
-    saveSettings(req.body);
-    // use getSettingsInternal so the scheduler gets decrypted/parsed settings
-    const settings = getSettingsInternal();
-    rescheduleUser(req.userId, settings);
+    saveSettings(req.body, req.workspaceId);
+    const settings = getSettingsInternal(req.workspaceId);
+    rescheduleWorkspace(req.workspaceId, settings);
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: 'Failed to save settings' });
@@ -130,19 +209,21 @@ function handleSaveSettings(req, res) {
 router.put('/settings',  handleSaveSettings);
 router.post('/settings', handleSaveSettings);
 
-// get digest history
-router.get('/history', (_req, res) => {
+// ─── History ──────────────────────────────────────────────────────────────────
+
+// get digest history for this workspace
+router.get('/history', (req, res) => {
   try {
-    res.json(getHistory(30));
+    res.json(getHistory(30, req.workspaceId));
   } catch (err) {
     res.status(500).json({ error: 'Failed to load history' });
   }
 });
 
-// get a single digest by id
+// get a single digest by id — scoped to workspace
 router.get('/history/:id', (req, res) => {
   try {
-    const row = getDigestById(Number(req.params.id));
+    const row = getDigestById(Number(req.params.id), req.workspaceId);
     if (!row) return res.status(404).json({ error: 'Not found' });
     res.json(row);
   } catch (err) {
@@ -150,8 +231,9 @@ router.get('/history/:id', (req, res) => {
   }
 });
 
+// ─── Run Now ──────────────────────────────────────────────────────────────────
+
 // run digest immediately with SSE progress streaming; optional date_from/date_to override news lookback
-// ad-hoc (dashboard): pass { company } for a single run; omit to run all settings.companies[]
 router.post('/run-now', async (req, res) => {
   const { company: adHocCompany, date_from, date_to } = req.body;
 
@@ -162,14 +244,14 @@ router.post('/run-now', async (req, res) => {
   const send = (msg) => res.write(`data: ${JSON.stringify({ message: msg })}\n\n`);
 
   try {
-    const base     = getSettingsInternal();
+    const base     = getSettingsInternal(req.workspaceId);
     const settings = {
       ...base,
       ...(date_from && { search_from: date_from }),
       ...(date_to   && { search_to:   date_to   }),
     };
 
-    // ad-hoc uses the passed company; settings test uses settings.companies[]
+    // ad-hoc uses the passed company; otherwise use settings.companies[]
     const companies = adHocCompany
       ? [adHocCompany.trim()]
       : (base.companies?.filter(Boolean).length > 0
@@ -185,7 +267,7 @@ router.post('/run-now', async (req, res) => {
     if (date_from && date_to) {
       const days = Math.round((new Date(date_to) - new Date(date_from)) / 86400000);
       if (days > 90) {
-        res.write(`data: ${JSON.stringify({ error: `Date range is ${days} days — max is 90 days for reliable results. Please narrow your selection.` })}\n\n`);
+        res.write(`data: ${JSON.stringify({ error: `Date range is ${days} days — max is 90 days. Please narrow your selection.` })}\n\n`);
         res.end();
         return;
       }
@@ -193,8 +275,8 @@ router.post('/run-now', async (req, res) => {
     }
 
     if (companies.length === 1) {
-      // single company — existing streaming flow
-      const { id, digest } = await runDigest(companies[0], settings, send);
+      // single company — streaming flow
+      const { id, digest } = await runDigest(companies[0], settings, send, req.workspaceId);
       if (date_from) digest.search_from = date_from;
       if (date_to)   digest.search_to   = date_to;
 
@@ -205,11 +287,11 @@ router.post('/run-now', async (req, res) => {
 
       res.write(`data: ${JSON.stringify({ done: true, id, digest, delivery: deliveryResults })}\n\n`);
     } else {
-      // multi-company — run all in parallel then send one combined email
+      // multi-company — run all, then one combined email
       send(`Running digest for ${companies.length} companies: ${companies.join(', ')}…`);
       const runs = await Promise.all(companies.map(async c => {
         send(`Generating digest for ${c}…`);
-        return runDigest(c, settings);
+        return runDigest(c, settings, null, req.workspaceId);
       }));
       const digests = runs.map(r => r.digest);
 
@@ -238,17 +320,19 @@ router.post('/run-now', async (req, res) => {
   }
 });
 
-// activate/update the cron schedule
+// ─── Schedule ─────────────────────────────────────────────────────────────────
+
+// activate/update the cron schedule for all workspaces
 router.post('/schedule', (_req, res) => {
   try {
     scheduleDigest();
-    res.json({ ok: true, message: 'Schedule updated', status: getScheduleStatus() });
+    res.json({ ok: true, message: 'Schedule updated', status: getScheduleStatus(_req.workspaceId) });
   } catch (err) {
     res.status(500).json({ error: 'Failed to schedule' });
   }
 });
 
-// stop the cron schedule
+// stop all active schedules
 router.delete('/schedule', (_req, res) => {
   try {
     stopSchedule();
@@ -258,19 +342,19 @@ router.delete('/schedule', (_req, res) => {
   }
 });
 
-// get current scheduler state + next fire time
-router.get('/schedule/status', (_req, res) => {
+// get current scheduler state + next fire time for this workspace
+router.get('/schedule/status', (req, res) => {
   try {
-    res.json(getScheduleStatus());
+    res.json(getScheduleStatus(req.workspaceId));
   } catch (err) {
     res.status(500).json({ error: 'Failed to get schedule status' });
   }
 });
 
-// get delivery log history (last 30 runs)
-router.get('/schedule/history', (_req, res) => {
+// get delivery log history for this workspace
+router.get('/schedule/history', (req, res) => {
   try {
-    res.json(getDeliveryHistory(30));
+    res.json(getDeliveryHistory(30, req.workspaceId));
   } catch (err) {
     res.status(500).json({ error: 'Failed to get delivery history' });
   }

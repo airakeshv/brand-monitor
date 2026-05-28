@@ -1,11 +1,15 @@
 import { useState, useEffect } from 'react';
 import RunNow from '../components/RunNow.jsx';
 import DigestPreview from '../components/DigestPreview.jsx';
+import { useWorkspace } from '../context/WorkspaceContext.jsx';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
-// read JWT from localStorage and return auth header for every fetch
-const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('bm_token') || ''}` });
+// return auth + workspace headers for every fetch
+const apiHeaders = (wsId) => ({
+  Authorization:    `Bearer ${localStorage.getItem('bm_token') || ''}`,
+  'X-Workspace-Id': String(wsId || ''),
+});
 
 const inputStyle = {
   background: '#0A0E27',
@@ -48,6 +52,7 @@ function getPeriodDates(period, customFrom, customTo) {
 
 // main dashboard — company input, period selector, run button, live digest preview
 export default function Dashboard() {
+  const { activeWorkspaceId } = useWorkspace();
   const [company,     setCompany]     = useState('');
   const [digest,      setDigest]      = useState(null);
   const [delivery,    setDelivery]    = useState(null);
@@ -55,13 +60,16 @@ export default function Dashboard() {
   const [customFrom,  setCustomFrom]  = useState('');
   const [customTo,    setCustomTo]    = useState('');
 
-  // load saved company name from settings on mount
+  // load saved company name from workspace settings — reload when workspace changes
   useEffect(() => {
-    fetch(`${API}/api/settings`, { headers: authHeaders() })
+    if (!activeWorkspaceId) return;
+    fetch(`${API}/api/settings`, { headers: apiHeaders(activeWorkspaceId) })
       .then(r => r.json())
-      .then(s => { if (s.company_name) setCompany(s.company_name); })
+      .then(s => { if (s.company_name) setCompany(s.company_name); else setCompany(''); })
       .catch(() => {});
-  }, []);
+    // clear digest when switching workspaces
+    setDigest(null); setDelivery(null);
+  }, [activeWorkspaceId]);
 
   const handleDigest = (d, del) => {
     setDigest(d);
