@@ -1,11 +1,7 @@
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { Resend } from 'resend';
-import nodemailer from 'nodemailer';
-import { lookup } from 'dns';
-import { promisify } from 'util';
-
-const dnsLookup = promisify(lookup);
+import sgMail from '@sendgrid/mail';
 
 // hash a raw token with SHA-256 for safe DB storage
 export function hashToken(raw) {
@@ -55,28 +51,13 @@ function buildMagicLinkHtml(magicUrl) {
   `;
 }
 
-// send via Gmail SMTP using nodemailer — can reach ANY email address, no domain needed
-// requires: GMAIL_USER=you@gmail.com  GMAIL_APP_PASSWORD=xxxx-xxxx-xxxx-xxxx
-// Pre-resolves smtp.gmail.com to an IPv4 address — Railway has no outbound IPv6.
-// family:4 alone is unreliable; explicit DNS lookup guarantees IPv4 connection.
-async function sendViaGmail(to, magicUrl) {
-  // resolve hostname to IPv4 before creating the transport
-  const { address: smtpIp } = await dnsLookup('smtp.gmail.com', { family: 4 });
-  console.log(`[email] resolved smtp.gmail.com → ${smtpIp} (IPv4)`);
-
-  const transporter = nodemailer.createTransport({
-    host:   smtpIp,               // use IPv4 address directly
-    port:   587,
-    secure: false,                // STARTTLS on 587
-    tls:    { servername: 'smtp.gmail.com' }, // keep cert validation against hostname
-    auth: {
-      user: process.env.GMAIL_USER,
-      pass: process.env.GMAIL_APP_PASSWORD,
-    },
-  });
-  await transporter.sendMail({
-    from:    `"BrandMonitor" <${process.env.GMAIL_USER}>`,
+// send via SendGrid HTTP API — works from Railway (HTTPS port 443, never blocked)
+// requires: SENDGRID_API_KEY  SENDGRID_FROM=verified-sender@yourdomain.com
+async function sendViaSendGrid(to, magicUrl) {
+  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+  await sgMail.send({
     to,
+    from:    process.env.SENDGRID_FROM,
     subject: 'Your Brand Monitor sign-in link',
     html:    buildMagicLinkHtml(magicUrl),
     text:    `Sign in to Brand Monitor\n\n${magicUrl}\n\nThis link expires in 15 minutes.`,
@@ -99,14 +80,14 @@ async function sendViaResend(to, magicUrl) {
 }
 
 // send the magic link email — picks provider automatically:
-//   1. Gmail SMTP  (GMAIL_USER + GMAIL_APP_PASSWORD set)   → any recipient ✓
-//   2. Resend      (RESEND_API_KEY set, custom domain)      → any recipient ✓
-//   3. Console log (dev fallback — no email keys set)       → logs link to terminal
+//   1. SendGrid HTTP API (SENDGRID_API_KEY set)  → any recipient, HTTPS, works on Railway ✓
+//   2. Resend HTTP API   (RESEND_API_KEY set)     → any recipient IF custom domain configured ✓
+//   3. Console log       (no keys set)            → logs link to terminal for dev testing
 export async function sendMagicLinkEmail(email, magicUrl) {
   try {
-    if (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD) {
-      console.log(`[email] sending via Gmail SMTP to ${email}`);
-      await sendViaGmail(email, magicUrl);
+    if (process.env.SENDGRID_API_KEY && process.env.SENDGRID_FROM) {
+      console.log(`[email] sending via SendGrid to ${email}`);
+      await sendViaSendGrid(email, magicUrl);
       console.log(`[email] ✓ sent to ${email}`);
       return;
     }
@@ -118,7 +99,7 @@ export async function sendMagicLinkEmail(email, magicUrl) {
       return;
     }
 
-    // dev fallback — print link to console so dev can still test without email keys
+    // dev fallback — print link to console so dev can test without email keys
     console.log(`[email] ⚠ No email provider configured. Magic link for ${email}:`);
     console.log(`[email] ${magicUrl}`);
   } catch (err) {
