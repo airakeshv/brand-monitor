@@ -241,17 +241,59 @@ export async function sendDigestEmail(digest, toEmail) {
 
 // ─── Multi-company combined email ────────────────────────────────────────────
 
-// build compact HTML section for one company inside a combined email
+// build full HTML section for one company inside a combined email — matches dashboard detail level
 function buildCompanySectionHtml(digest) {
-  const newsRows = (digest.news || []).slice(0, 5).map(n => `
+  // news — all items with snippet
+  const newsRows = (digest.news || []).map(n => `
     <tr><td style="padding:8px 0;border-bottom:1px solid #1e2a44">
       <span style="background:rgba(91,99,235,0.15);color:#5B63EB;border:1px solid rgba(91,99,235,0.3);border-radius:999px;padding:1px 8px;font-size:11px;font-weight:600">${n.source||''}</span>
       <span style="margin-left:6px;background:${sentimentColor(n.sentiment)};color:#0A0E27;border-radius:999px;padding:1px 6px;font-size:11px;font-weight:600">${n.sentiment||''}</span>
       <div style="margin-top:4px"><a href="${n.url||'#'}" style="color:#FFFFFF;font-weight:600;font-size:13px;text-decoration:none">${n.title||''}</a></div>
+      ${n.snippet ? `<div style="color:#B4B4B4;font-size:12px;margin-top:3px">${n.snippet}</div>` : ''}
     </td></tr>`).join('');
-  const reviewFlagged = (digest.reviews || []).filter(r => r.urgency === 'CRITICAL' || r.urgency === 'HIGH').length;
+
+  // social — all items that have a title
+  const socialRows = (digest.social || []).filter(s => s.title).map(s => `
+    <tr><td style="padding:8px 0;border-bottom:1px solid #1e2a44">
+      <span style="background:rgba(168,85,247,0.15);color:#a855f7;border:1px solid rgba(168,85,247,0.3);border-radius:999px;padding:1px 8px;font-size:11px;font-weight:600">${s.source||''}</span>
+      ${s.sentiment ? `<span style="margin-left:6px;background:${sentimentColor(s.sentiment)};color:#0A0E27;border-radius:999px;padding:1px 6px;font-size:11px;font-weight:600">${s.sentiment}</span>` : ''}
+      <div style="margin-top:4px"><a href="${s.url||'#'}" style="color:#FFFFFF;font-weight:600;font-size:13px;text-decoration:none">${s.title||''}</a></div>
+      ${s.snippet ? `<div style="color:#B4B4B4;font-size:12px;margin-top:3px">${s.snippet}</div>` : ''}
+    </td></tr>`).join('');
+
+  // reviews — CRITICAL and HIGH urgency only
+  const flaggedReviews = (digest.reviews || []).filter(r => r.urgency === 'CRITICAL' || r.urgency === 'HIGH');
+  const reviewRows = flaggedReviews.map(r => `
+    <tr><td style="padding:8px 0;border-bottom:1px solid #1e2a44;border-left:3px solid ${urgencyColor(r.urgency)};padding-left:10px">
+      <span style="color:${urgencyColor(r.urgency)};font-weight:700;font-size:11px">${r.urgency||''}</span>
+      <span style="margin-left:6px;color:#B4B4B4;font-size:11px">${r.platform||''}${r.rating != null ? ' · ' + '★'.repeat(Math.max(0,r.rating||0)) + '☆'.repeat(Math.max(0,5-(r.rating||0))) : ''}</span>
+      <div style="color:#FFFFFF;margin-top:4px;font-size:13px">"${r.excerpt||''}"</div>
+      ${r.draft_response ? `<div style="background:#0A0E27;border:1px solid #2A3858;border-radius:6px;padding:6px 10px;margin-top:6px;color:#B4B4B4;font-size:12px"><strong style="color:#5B63EB">Suggested reply:</strong> ${r.draft_response}</div>` : ''}
+    </td></tr>`).join('');
+
+  // competitor signals
+  const competitorRows = (digest.competitor_signals || []).filter(c => c.company).map(c => `
+    <tr><td style="padding:8px 0;border-bottom:1px solid #1e2a44;border-left:3px solid #5B63EB;padding-left:10px">
+      <span style="color:#5B63EB;font-weight:700;font-size:13px">${c.company}</span>
+      <span style="margin-left:6px;background:rgba(91,99,235,0.15);color:#5B63EB;border-radius:4px;padding:1px 6px;font-size:11px">${c.signal_type||''}</span>
+      <div style="color:#B4B4B4;font-size:12px;margin-top:3px">${c.detail||''}</div>
+    </td></tr>`).join('');
+
+  // keywords pills
+  const keywords = (digest.keywords || []).map(k =>
+    `<span style="background:rgba(91,99,235,0.15);color:#5B63EB;border:1px solid rgba(91,99,235,0.3);border-radius:999px;padding:2px 10px;font-size:11px;display:inline-block;margin:2px 2px">${k}</span>`
+  ).join('');
+
+  const reviewFlagged = flaggedReviews.length;
   const crisisBadge   = digest.crisis_flag?.triggered
     ? `<span style="background:#ef4444;color:#fff;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:700;margin-left:8px">⚠ CRISIS</span>` : '';
+  const crisisBanner  = digest.crisis_flag?.triggered
+    ? `<tr><td style="padding:8px 0 4px"><div style="background:rgba(239,68,68,0.15);border:1px solid #ef4444;border-radius:8px;padding:8px 12px;font-size:12px;color:#FFFFFF"><strong style="color:#ef4444">⚠ CRISIS ALERT:</strong> ${digest.crisis_flag.reason}</div></td></tr>` : '';
+
+  // section header helper
+  const sectionHeader = (label, count) =>
+    `<tr><td style="padding:10px 0 4px"><div style="color:#6B7A99;font-size:11px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;border-bottom:1px solid #1e2a44;padding-bottom:4px">${label} (${count})</div></td></tr>`;
+
   return `
     <tr><td style="padding:20px 32px 4px">
       <table width="100%" cellpadding="0" cellspacing="0">
@@ -261,8 +303,13 @@ function buildCompanySectionHtml(digest) {
             News (${(digest.news||[]).length}) &nbsp;·&nbsp; Social (${(digest.social||[]).length})${reviewFlagged ? ` &nbsp;·&nbsp; <span style="color:#ef4444">${reviewFlagged} review${reviewFlagged>1?'s':''} flagged</span>` : ''}
           </div>
         </td></tr>
-        ${newsRows ? `<tr><td><table width="100%" cellpadding="0" cellspacing="0">${newsRows}</table></td></tr>` : ''}
-        ${digest.watch_out ? `<tr><td style="padding:8px 0 0"><div style="background:rgba(250,204,21,0.1);border-left:3px solid #facc15;padding:8px 12px;font-size:12px;color:#FFFFFF"><strong style="color:#facc15">Watch Out:</strong> ${digest.watch_out}</div></td></tr>` : ''}
+        ${crisisBanner}
+        ${newsRows ? `${sectionHeader('News', (digest.news||[]).length)}<tr><td><table width="100%" cellpadding="0" cellspacing="0">${newsRows}</table></td></tr>` : ''}
+        ${socialRows ? `${sectionHeader('Social', (digest.social||[]).filter(s=>s.title).length)}<tr><td><table width="100%" cellpadding="0" cellspacing="0">${socialRows}</table></td></tr>` : ''}
+        ${reviewRows ? `${sectionHeader('Flagged Reviews', reviewFlagged)}<tr><td><table width="100%" cellpadding="0" cellspacing="0">${reviewRows}</table></td></tr>` : ''}
+        ${competitorRows ? `${sectionHeader('Competitor Signals', (digest.competitor_signals||[]).filter(c=>c.company).length)}<tr><td><table width="100%" cellpadding="0" cellspacing="0">${competitorRows}</table></td></tr>` : ''}
+        ${keywords ? `<tr><td style="padding:8px 0 4px"><div style="margin-bottom:4px;color:#6B7A99;font-size:11px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase">Keywords</div><div>${keywords}</div></td></tr>` : ''}
+        ${digest.watch_out ? `<tr><td style="padding:8px 0 4px"><div style="background:rgba(250,204,21,0.1);border-left:3px solid #facc15;padding:8px 12px;font-size:12px;color:#FFFFFF"><strong style="color:#facc15">Watch Out:</strong> ${digest.watch_out}</div></td></tr>` : ''}
       </table>
     </td></tr>`;
 }
@@ -299,7 +346,7 @@ function buildMultiCompanyHtml(digests) {
 </html>`;
 }
 
-// build plain-text fallback for multi-company email
+// build plain-text fallback for multi-company email — full detail matching dashboard
 function buildMultiCompanyText(digests) {
   const lines = [
     'BRAND MONITOR — MULTI-COMPANY DIGEST',
@@ -313,8 +360,57 @@ function buildMultiCompanyText(digests) {
     lines.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     lines.push(`News (${(digest.news||[]).length}) | Social (${(digest.social||[]).length}) | Reviews (${(digest.reviews||[]).length})`);
     if (digest.crisis_flag?.triggered) lines.push(`⚠ CRISIS: ${digest.crisis_flag.reason}`);
-    (digest.news || []).slice(0, 5).forEach(n => lines.push(`  [${n.sentiment||''}] ${n.title||''}`));
-    if (digest.watch_out) lines.push(`Watch Out: ${digest.watch_out}`);
+
+    // all news items
+    if ((digest.news||[]).length > 0) {
+      lines.push('');
+      lines.push('NEWS:');
+      (digest.news || []).forEach(n => {
+        lines.push(`  [${n.sentiment||''}] ${n.title||''}`);
+        if (n.snippet) lines.push(`    ${n.snippet}`);
+      });
+    }
+
+    // all social items
+    const socialItems = (digest.social || []).filter(s => s.title);
+    if (socialItems.length > 0) {
+      lines.push('');
+      lines.push('SOCIAL:');
+      socialItems.forEach(s => {
+        lines.push(`  [${s.source||''}] ${s.title||''}`);
+        if (s.snippet) lines.push(`    ${s.snippet}`);
+      });
+    }
+
+    // flagged reviews only
+    const flagged = (digest.reviews || []).filter(r => r.urgency === 'CRITICAL' || r.urgency === 'HIGH');
+    if (flagged.length > 0) {
+      lines.push('');
+      lines.push('FLAGGED REVIEWS:');
+      flagged.forEach(r => {
+        lines.push(`  [${r.urgency}] ${r.platform||''}: "${r.excerpt||''}"`);
+        if (r.draft_response) lines.push(`    Suggested reply: ${r.draft_response}`);
+      });
+    }
+
+    // competitor signals
+    const competitors = (digest.competitor_signals || []).filter(c => c.company);
+    if (competitors.length > 0) {
+      lines.push('');
+      lines.push('COMPETITOR SIGNALS:');
+      competitors.forEach(c => lines.push(`  ${c.company} [${c.signal_type||''}]: ${c.detail||''}`));
+    }
+
+    // keywords
+    if ((digest.keywords || []).length > 0) {
+      lines.push('');
+      lines.push(`KEYWORDS: ${digest.keywords.join(', ')}`);
+    }
+
+    if (digest.watch_out) {
+      lines.push('');
+      lines.push(`Watch Out: ${digest.watch_out}`);
+    }
     lines.push('');
   }
   return lines.join('\n');
