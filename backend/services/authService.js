@@ -2,6 +2,10 @@ import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { Resend } from 'resend';
 import nodemailer from 'nodemailer';
+import { lookup } from 'dns';
+import { promisify } from 'util';
+
+const dnsLookup = promisify(lookup);
 
 // hash a raw token with SHA-256 for safe DB storage
 export function hashToken(raw) {
@@ -53,13 +57,18 @@ function buildMagicLinkHtml(magicUrl) {
 
 // send via Gmail SMTP using nodemailer — can reach ANY email address, no domain needed
 // requires: GMAIL_USER=you@gmail.com  GMAIL_APP_PASSWORD=xxxx-xxxx-xxxx-xxxx
-// family:4 forces IPv4 — Railway containers have no outbound IPv6 connectivity
+// Pre-resolves smtp.gmail.com to an IPv4 address — Railway has no outbound IPv6.
+// family:4 alone is unreliable; explicit DNS lookup guarantees IPv4 connection.
 async function sendViaGmail(to, magicUrl) {
+  // resolve hostname to IPv4 before creating the transport
+  const { address: smtpIp } = await dnsLookup('smtp.gmail.com', { family: 4 });
+  console.log(`[email] resolved smtp.gmail.com → ${smtpIp} (IPv4)`);
+
   const transporter = nodemailer.createTransport({
-    host:   'smtp.gmail.com',
+    host:   smtpIp,               // use IPv4 address directly
     port:   587,
-    secure: false,   // STARTTLS on port 587 (not SSL on 465)
-    family: 4,       // force IPv4 — prevents ENETUNREACH on Railway
+    secure: false,                // STARTTLS on 587
+    tls:    { servername: 'smtp.gmail.com' }, // keep cert validation against hostname
     auth: {
       user: process.env.GMAIL_USER,
       pass: process.env.GMAIL_APP_PASSWORD,
