@@ -53,9 +53,13 @@ function buildMagicLinkHtml(magicUrl) {
 
 // send via Gmail SMTP using nodemailer — can reach ANY email address, no domain needed
 // requires: GMAIL_USER=you@gmail.com  GMAIL_APP_PASSWORD=xxxx-xxxx-xxxx-xxxx
+// family:4 forces IPv4 — Railway containers have no outbound IPv6 connectivity
 async function sendViaGmail(to, magicUrl) {
   const transporter = nodemailer.createTransport({
-    service: 'gmail',
+    host:   'smtp.gmail.com',
+    port:   587,
+    secure: false,   // STARTTLS on port 587 (not SSL on 465)
+    family: 4,       // force IPv4 — prevents ENETUNREACH on Railway
     auth: {
       user: process.env.GMAIL_USER,
       pass: process.env.GMAIL_APP_PASSWORD,
