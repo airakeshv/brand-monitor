@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import { existsSync, statSync } from 'fs';
+import { resolve } from 'path';
 import { searchAll } from '../services/searchService.js';
 import { applyNoiseFilter } from '../services/noiseFilter.js';
 import { runDigest } from '../services/digestService.js';
@@ -15,6 +17,24 @@ import { getWorkspaces, createWorkspace, deleteWorkspace } from '../models/works
 const router = Router();
 
 router.get('/ping', (_req, res) => res.json({ message: 'API ready' }));
+
+// DB health check — confirms path, file existence, user/workspace counts
+// Accessible to any authenticated user — useful for diagnosing Railway volume issues
+router.get('/debug/db', (req, res) => {
+  try {
+    const db     = getDB();
+    const dbPath = resolve(process.env.DATABASE_PATH || 'data/brand-monitor.db');
+    const exists = existsSync(dbPath);
+    const size   = exists ? statSync(dbPath).size : 0;
+    const users      = db.prepare('SELECT COUNT(*) as n FROM users').get().n;
+    const workspaces = db.prepare('SELECT COUNT(*) as n FROM workspaces').get().n;
+    const settings   = db.prepare('SELECT COUNT(*) as n FROM settings').get().n;
+    const myWs       = db.prepare('SELECT * FROM workspaces WHERE user_id = ?').all(req.userId);
+    res.json({ dbPath, exists, sizeBytes: size, users, workspaces, settings, myWorkspaces: myWs });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // request a magic sign-in link — upserts user, stores hashed token, emails the link
 router.post('/auth/request-link', async (req, res) => {

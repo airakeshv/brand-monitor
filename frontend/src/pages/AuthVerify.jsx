@@ -22,7 +22,8 @@ export default function AuthVerify() {
         const j = await res.json();
         if (!res.ok) throw new Error(j.error || `Error ${res.status}`);
         localStorage.setItem('bm_token', j.token);
-        navigate('/dashboard', { replace: true });
+        // full page reload — forces WorkspaceContext to re-initialise with the new token
+        window.location.href = '/dashboard';
       })
       .catch(err => {
         setState('error');

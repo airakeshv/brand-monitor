@@ -3,6 +3,7 @@
 import dotenv from 'dotenv';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { existsSync, statSync } from 'fs';
 
 // load .env from monorepo root (one level up from backend/)
 dotenv.config({ path: resolve(dirname(fileURLToPath(import.meta.url)), '../.env') });
@@ -33,7 +34,18 @@ app.use('/api', apiRouter);
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
-console.log('Database path:', process.env.DATABASE_PATH || 'local fallback');
+// ── DB path diagnostics — verify volume is mounted correctly ──────────────────
+const dbPath = resolve(process.env.DATABASE_PATH || 'data/brand-monitor.db');
+const dbExists = existsSync(dbPath);
+const dbSize   = dbExists ? statSync(dbPath).size : 0;
+console.log(`[DB] path:   ${dbPath}`);
+console.log(`[DB] exists: ${dbExists} | size: ${dbSize} bytes`);
+if (!dbExists) {
+  console.log('[DB] ⚠ File not found — new DB will be created. If this is a Railway deploy, confirm the Volume mount path matches DATABASE_PATH.');
+} else {
+  console.log('[DB] ✓ Existing DB found — data should persist from last run.');
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 // initialise database then start server — order matters for FK dependencies
 initDB();               // settings, users, magic_tokens tables

@@ -197,6 +197,7 @@ export function saveSettings(updates, workspaceId) {
   for (const [k, v] of Object.entries(updates)) {
     if (k === 'llm_api_key_set') continue;  // read-only computed field — never store
     if (k === 'workspace_id')    continue;  // never allow overwriting workspace ownership
+    if (k === 'id')              continue;  // never update the primary key
     if (k === 'llm_api_key') {
       if (!v || v === MASKED) continue;     // masked sentinel or blank → keep existing
       serialised[k] = encrypt(v);
