@@ -186,11 +186,24 @@ function CompanyTab({ s, set }) {
         )}
       </Field>
 
+      <Field
+        label="Key People — CEO, founder, spokesperson"
+        hint="Mentions of these people are searched separately and tagged in your digest. Separate names with commas. Max 5 names."
+      >
+        <TagInput
+          value={s.executive_names||[]}
+          onChange={v => set({...s, executive_names: v.slice(0, 5)})}
+          placeholder="e.g. Mukesh Ambani, Nita Ambani"
+        />
+        {(s.executive_names||[]).length > 0 && (
+          <div style={{ marginTop:6, color:'#6B7A99', fontSize:11 }}>
+            Tracking {(s.executive_names||[]).length} {(s.executive_names||[]).length === 1 ? 'person' : 'people'} · uses ~{(s.executive_names||[]).length} extra Serper credits per digest
+          </div>
+        )}
+      </Field>
+
       <Field label="Competitor Names (comma-separated)">
         <TagInput value={s.competitor_names||[]} onChange={v=>set({...s,competitor_names:v})} placeholder="Mahindra, Maruti Suzuki, Hyundai" />
-      </Field>
-      <Field label="Executive Names (track mentions)">
-        <TagInput value={s.executive_names||[]} onChange={v=>set({...s,executive_names:v})} placeholder="Ratan Tata, N. Chandrasekaran" />
       </Field>
       <Field label="Include Keywords">
         <TagInput value={s.include_keywords||[]} onChange={v=>set({...s,include_keywords:v})} placeholder="EV, electric vehicle, launch" />

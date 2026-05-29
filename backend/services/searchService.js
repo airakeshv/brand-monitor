@@ -233,11 +233,28 @@ function isRelevant(result, company) {
   return words.some(w => title.includes(w) || snippet.includes(w));
 }
 
+// search for a single named person (executive, founder, CEO) — uses /news for quality, recent coverage
+async function searchPerson(name, tbs = 'qdr:w') {
+  const results = await serperNewsSearch(name, { num: 5, tbs });
+  return results.map(r => ({ ...r, source_category: 'executive', person_badge: name }));
+}
+
+// search all executive/founder names from settings — each name runs a separate Serper search
+// results tagged with source_category:'executive' and person_badge for digest section display
+export async function searchExecutives(names = [], tbs = 'qdr:w') {
+  const valid = names.filter(Boolean).slice(0, 5); // cap at 5 to control Serper credit usage
+  if (!valid.length) return [];
+  const tasks = valid.map(name => () => searchPerson(name, tbs));
+  const results = await runBatched(tasks, 2, 500); // 2 at a time, 500 ms gap — lower priority than company search
+  return results.flat();
+}
+
 // aggregate all sources based on enabled flags in settings
 export async function searchAll(company, settings = {}) {
   const c       = (company || '').trim(); // trim trailing spaces — prevents double-space queries like "Reliance  (site:..."
   const enabled = settings.sources_enabled || {};
   const tbs     = toTbs(settings.news_lookback, settings.search_from, settings.search_to);
+  const execs   = (settings.executive_names || []).filter(Boolean);
 
   // use thunks so runBatched can start them in controlled batches (not all at once)
   const tasks = [];
@@ -248,10 +265,14 @@ export async function searchAll(company, settings = {}) {
   if (enabled.reviews     !== false) tasks.push(() => searchReviews(c));
   if (enabled.twitter     !== false) tasks.push(() => searchTwitter(c));
   if (enabled.linkedin    !== false) tasks.push(() => searchLinkedIn(c));
+  if (execs.length > 0)              tasks.push(() => searchExecutives(execs, tbs)); // executive mentions
 
   // run 3 sources at a time with 300 ms gap — prevents 10+ concurrent Serper requests that cause 400/429
   const allResults = await runBatched(tasks, 3, 300);
-  return allResults.flat().map(normalizeResult).filter(r => isRelevant(r, c));
+  return allResults.flat()
+    .map(normalizeResult)
+    // executive results bypass the company-name relevance check — they're already person-specific searches
+    .filter(r => r.source_category === 'executive' || isRelevant(r, c));
 }
 
 // run searchAll for every company sequentially — avoids Serper burst when workspace tracks multiple companies
