@@ -24,6 +24,10 @@ async function serperSearch(query, params = {}, attempt = 0) {
       await new Promise(r => setTimeout(r, waitMs));
       return serperSearch(query, params, attempt + 1);
     }
+    // log actual Serper error body so Railway logs show the real rejection reason (not just "400")
+    if (err.response?.data) {
+      console.error(`[serper] error body:`, JSON.stringify(err.response.data).slice(0, 300));
+    }
     console.error(`Serper search failed for "${query}":`, err.message);
     return [];
   }
