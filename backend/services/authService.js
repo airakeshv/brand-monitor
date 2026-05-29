@@ -55,13 +55,21 @@ function buildMagicLinkHtml(magicUrl) {
 // requires: SENDGRID_API_KEY  SENDGRID_FROM=verified-sender@yourdomain.com
 async function sendViaSendGrid(to, magicUrl) {
   sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-  await sgMail.send({
-    to,
-    from:    process.env.SENDGRID_FROM,
-    subject: 'Your Brand Monitor sign-in link',
-    html:    buildMagicLinkHtml(magicUrl),
-    text:    `Sign in to Brand Monitor\n\n${magicUrl}\n\nThis link expires in 15 minutes.`,
-  });
+  console.log(`[sendgrid] from=${process.env.SENDGRID_FROM} to=${to}`);
+  try {
+    await sgMail.send({
+      to,
+      from:    process.env.SENDGRID_FROM,
+      subject: 'Your Brand Monitor sign-in link',
+      html:    buildMagicLinkHtml(magicUrl),
+      text:    `Sign in to Brand Monitor\n\n${magicUrl}\n\nThis link expires in 15 minutes.`,
+    });
+  } catch (err) {
+    // extract the real SendGrid error message from the response body
+    const details = err.response?.body?.errors?.map(e => e.message).join(' | ') || err.message;
+    console.error('[sendgrid] error details:', details);
+    throw new Error(details);
+  }
 }
 
 // send via Resend — works to any address ONLY when RESEND_FROM uses a verified custom domain
