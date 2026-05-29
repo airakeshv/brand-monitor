@@ -55,11 +55,12 @@ function buildMagicLinkHtml(magicUrl) {
 // requires: SENDGRID_API_KEY  SENDGRID_FROM=verified-sender@yourdomain.com
 async function sendViaSendGrid(to, magicUrl) {
   sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-  console.log(`[sendgrid] from=${process.env.SENDGRID_FROM} to=${to}`);
+  const from = (process.env.SENDGRID_FROM || '').trim(); // trim hidden newlines/spaces
+  console.log(`[sendgrid] from=${from} to=${to}`);
   try {
     await sgMail.send({
       to,
-      from:    process.env.SENDGRID_FROM,
+      from,
       subject: 'Your Brand Monitor sign-in link',
       html:    buildMagicLinkHtml(magicUrl),
       text:    `Sign in to Brand Monitor\n\n${magicUrl}\n\nThis link expires in 15 minutes.`,
