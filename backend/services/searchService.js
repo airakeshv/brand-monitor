@@ -2,8 +2,8 @@ import axios from 'axios';
 
 const SERPER_URL = 'https://google.serper.dev/search';
 
-// generic Serper search — returns array of result objects
-async function serperSearch(query, params = {}) {
+// generic Serper search — returns array of result objects; auto-retries on 429 rate limit
+async function serperSearch(query, params = {}, attempt = 0) {
   try {
     const res = await axios.post(
       SERPER_URL,
@@ -17,9 +17,27 @@ async function serperSearch(query, params = {}) {
     );
     return res.data.organic || [];
   } catch (err) {
+    const status = err.response?.status;
+    if (status === 429 && attempt < 2) {
+      const waitMs = (attempt + 1) * 2000; // 2 s then 4 s
+      console.log(`[serper] rate limited — retrying in ${waitMs / 1000}s…`);
+      await new Promise(r => setTimeout(r, waitMs));
+      return serperSearch(query, params, attempt + 1);
+    }
     console.error(`Serper search failed for "${query}":`, err.message);
     return [];
   }
+}
+
+// run an array of task functions in batches of batchSize — prevents bursting Serper with 10+ concurrent requests
+async function runBatched(taskFns, batchSize = 3, delayMs = 300) {
+  const results = [];
+  for (let i = 0; i < taskFns.length; i += batchSize) {
+    const batch = await Promise.all(taskFns.slice(i, i + batchSize).map(fn => fn()));
+    results.push(...batch);
+    if (i + batchSize < taskFns.length) await new Promise(r => setTimeout(r, delayMs));
+  }
+  return results;
 }
 
 // convert YYYY-MM-DD to M/D/YYYY for Serper custom date range
@@ -202,30 +220,30 @@ function isRelevant(result, company) {
 
 // aggregate all sources based on enabled flags in settings
 export async function searchAll(company, settings = {}) {
+  const c       = (company || '').trim(); // trim trailing spaces — prevents double-space queries like "Reliance  (site:..."
   const enabled = settings.sources_enabled || {};
   const tbs     = toTbs(settings.news_lookback, settings.search_from, settings.search_to);
 
+  // use thunks so runBatched can start them in controlled batches (not all at once)
   const tasks = [];
+  if (enabled.india_news  !== false) tasks.push(() => searchIndiaNews(c, tbs));
+  if (enabled.global_news !== false) tasks.push(() => searchGlobalNews(c, tbs));
+  tasks.push(() => searchGeneralNews(c, tbs)); // always run — catches outlets outside site lists
+  if (enabled.reddit      !== false) tasks.push(() => searchReddit(c));
+  if (enabled.reviews     !== false) tasks.push(() => searchReviews(c));
+  if (enabled.twitter     !== false) tasks.push(() => searchTwitter(c));
+  if (enabled.linkedin    !== false) tasks.push(() => searchLinkedIn(c));
 
-  if (enabled.india_news  !== false) tasks.push(searchIndiaNews(company, tbs));
-  if (enabled.global_news !== false) tasks.push(searchGlobalNews(company, tbs));
-  tasks.push(searchGeneralNews(company, tbs)); // always run — catches outlets outside site lists
-  if (enabled.reddit      !== false) tasks.push(searchReddit(company));
-  if (enabled.reviews     !== false) tasks.push(searchReviews(company));
-  if (enabled.twitter     !== false) tasks.push(searchTwitter(company));
-  if (enabled.linkedin    !== false) tasks.push(searchLinkedIn(company));
-
-  const allResults = await Promise.all(tasks);
-  return allResults.flat().map(normalizeResult).filter(r => isRelevant(r, company));
+  // run 3 sources at a time with 300 ms gap — prevents 10+ concurrent Serper requests that cause 400/429
+  const allResults = await runBatched(tasks, 3, 300);
+  return allResults.flat().map(normalizeResult).filter(r => isRelevant(r, c));
 }
 
-// run searchAll for every company in the array in parallel — returns { companyName: results[] }
+// run searchAll for every company sequentially — avoids Serper burst when workspace tracks multiple companies
 export async function searchAllCompanies(companies, settings = {}) {
-  const entries = await Promise.all(
-    (companies || []).filter(Boolean).map(async company => {
-      const results = await searchAll(company, settings);
-      return [company, results];
-    })
-  );
-  return Object.fromEntries(entries);
+  const result = {};
+  for (const company of (companies || []).filter(Boolean)) {
+    result[company] = await searchAll(company, settings);
+  }
+  return result;
 }

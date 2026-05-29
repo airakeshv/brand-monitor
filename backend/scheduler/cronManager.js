@@ -169,8 +169,12 @@ function scheduleWorkspace(workspaceId, settings) {
   const frequency = settings.frequency || 'daily';
   const cronExpr  = toCronExpression(settings.delivery_time, timezone, frequency);
 
-  // always pass { timezone: 'UTC' } so server local time never affects firing
-  const task = cron.schedule(cronExpr, () => deliverWithRetry(workspaceId), { timezone: 'UTC' });
+  // stagger each workspace by (wsId-1 mod 5) × 2 min — prevents all workspaces hitting Serper simultaneously
+  const staggerMs = ((workspaceId - 1) % 5) * 2 * 60 * 1000; // ws1=0min, ws2=2min, ws3=4min, ws4=6min, ws5=8min
+  const task = cron.schedule(cronExpr, async () => {
+    if (staggerMs > 0) await new Promise(r => setTimeout(r, staggerMs));
+    deliverWithRetry(workspaceId);
+  }, { timezone: 'UTC' });
   activeJobs.set(workspaceId, { task, cronExpr });
   console.log(`Digest scheduled [ws ${workspaceId}]: ${frequency} at ${settings.delivery_time} ${timezone} → cron: ${cronExpr}`);
 }
