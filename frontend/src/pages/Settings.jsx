@@ -406,6 +406,47 @@ function ScheduleTab({ s, set, onActivate, onStop, schedMsg }) {
   const [runMsg,   setRunMsg]   = useState('');
   const [rangeFrom, setRangeFrom] = useState('');
   const [rangeTo,   setRangeTo]   = useState('');
+  const [waTestState, setWaTestState] = useState('idle'); // idle | sending | sent | error
+  const [waTestMsg,   setWaTestMsg]   = useState('');
+
+  // extract 10-digit number from full E.164 whatsapp field — strips +91 / 91 prefix
+  const waFull  = s.whatsapp || '';
+  const waTen   = waFull.startsWith('+91') ? waFull.slice(3)
+                : waFull.startsWith('91') && waFull.length > 10 ? waFull.slice(2)
+                : waFull;
+  const setWaTen = digits =>
+    set({ ...s, whatsapp: '+91' + digits.replace(/\D/g,'').slice(0,10), whatsapp_verified: 0 });
+
+  // send a verification test message via Twilio and mark number verified on success
+  const sendWaTest = async () => {
+    const num = s.whatsapp;
+    if (!num) return;
+    setWaTestState('sending'); setWaTestMsg('');
+    try {
+      const wsId = localStorage.getItem('bm_workspace_id') || '';
+      const res = await fetch(`${API}/api/settings/test-whatsapp`, {
+        method: 'POST',
+        headers: {
+          'Content-Type':   'application/json',
+          'Authorization':  'Bearer ' + localStorage.getItem('bm_token'),
+          'X-Workspace-Id': wsId,
+        },
+        body: JSON.stringify({ whatsapp_number: num }),
+      });
+      const j = await res.json();
+      if (j.ok) {
+        setWaTestState('sent');
+        setWaTestMsg('Test message sent! Check WhatsApp.');
+        set({ ...s, whatsapp_verified: 1 });
+      } else {
+        setWaTestState('error');
+        setWaTestMsg(j.error || 'Failed to send test message');
+      }
+    } catch (e) {
+      setWaTestState('error');
+      setWaTestMsg(e.message);
+    }
+  };
 
   // stream SSE from /api/run-now, optionally with date range
   const fireRun = async (dateFrom = null, dateTo = null) => {
@@ -549,6 +590,54 @@ function ScheduleTab({ s, set, onActivate, onStop, schedMsg }) {
               : <span style={{ color:'#ef4444' }}>no channels — configure in Delivery tab</span>}
           </div>
         </div>
+      </div>
+
+      {/* WhatsApp verification — enter number + send test to confirm reachability */}
+      <div style={{ background:'#0A0E27', border:'1px solid #2A3858', borderRadius:10, padding:'16px 18px', marginTop:16 }}>
+        <div style={{ color:'#B4B4B4', fontSize:11, fontWeight:700, textTransform:'uppercase',
+          letterSpacing:'0.06em', marginBottom:10 }}>
+          WhatsApp Number
+          {(s.whatsapp_verified === 1 || waTestState === 'sent') && (
+            <span style={{ color:'#22c55e', fontSize:11, fontWeight:700, marginLeft:8 }}>Verified ✓</span>
+          )}
+        </div>
+        <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+          <div style={{
+            background:'#111830', border:'1px solid #2A3858', borderRadius:8,
+            padding:'10px 14px', color:'#6B7A99', fontSize:14, flexShrink:0,
+          }}>+91</div>
+          <input
+            type="tel"
+            value={waTen}
+            onChange={e => setWaTen(e.target.value)}
+            placeholder="9876543210"
+            maxLength={10}
+            style={{ ...inputStyle, flex:1 }}
+          />
+          <button
+            onClick={sendWaTest}
+            disabled={waTestState === 'sending' || waTen.replace(/\D/g,'').length < 10}
+            style={{
+              background: waTestState === 'sent' ? '#22c55e' : '#5B63EB',
+              color:'#fff', border:'none', borderRadius:8, padding:'10px 16px',
+              fontWeight:700, fontSize:13, whiteSpace:'nowrap',
+              cursor: (waTestState === 'sending' || waTen.replace(/\D/g,'').length < 10) ? 'not-allowed' : 'pointer',
+              opacity: waTen.replace(/\D/g,'').length < 10 ? 0.5 : 1,
+            }}
+          >
+            {waTestState === 'sending' ? 'Sending…' : waTestState === 'sent' ? 'Sent ✓' : 'Send test'}
+          </button>
+        </div>
+        {waTestMsg && (
+          <div style={{ marginTop:8, color: waTestState === 'error' ? '#ef4444' : '#22c55e', fontSize:13 }}>
+            {waTestMsg}
+          </div>
+        )}
+        {!(s.whatsapp_verified === 1 || waTestState === 'sent') && (
+          <div style={{ marginTop:6, color:'#6B7A99', fontSize:12 }}>
+            Tap "Send test" to verify before activating WhatsApp delivery.
+          </div>
+        )}
       </div>
 
       {/* test email + custom date-range run */}

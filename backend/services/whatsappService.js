@@ -1,62 +1,134 @@
 import twilio from 'twilio';
 
-// build condensed 5-8 line WhatsApp digest
-function buildWhatsAppText(digest) {
+// format date to "26 May 2026"
+function fmtDate(iso) {
+  if (!iso) return '';
+  try {
+    return new Date(iso + 'T12:00:00Z').toLocaleDateString('en-IN', {
+      day: 'numeric', month: 'short', year: 'numeric',
+    });
+  } catch { return iso; }
+}
+
+// build the compact 7-line WhatsApp message for one company digest
+// format: header | top news | crisis | review alert | executive | keywords | footer
+function buildCompactMessage(digest) {
+  const company = (digest.company || '').toUpperCase();
+  const date    = fmtDate(digest.date);
+
+  // line 2: top news
+  const topNews  = digest.news?.[0];
+  const newsLine = topNews
+    ? `📰 Top: ${(topNews.title || '').slice(0, 65)}${(topNews.title || '').length > 65 ? '…' : ''} (${topNews.source || ''})`
+    : '📰 Top: No news today';
+
+  // line 3: crisis
+  const crisisLine = digest.crisis_flag?.triggered
+    ? `⚠️ Crisis: ${(digest.crisis_flag.reason || 'ALERT').slice(0, 70)}`
+    : '⚠️ Crisis: None';
+
+  // line 4: review alert
+  const highReviews = (digest.reviews || []).filter(r =>
+    r.urgency?.toUpperCase() === 'CRITICAL' || r.urgency?.toUpperCase() === 'HIGH'
+  );
+  const reviewLine = highReviews.length > 0
+    ? `⭐ Review alert: ${highReviews.length} ${highReviews[0].urgency?.toUpperCase()} on ${highReviews[0].platform || 'review site'}`
+    : '⭐ Reviews: No alerts';
+
+  // line 5: executive mention (omitted if no executives tracked)
+  const exec     = digest.executive_mentions?.[0];
+  const execLine = exec
+    ? `👤 Executive: ${exec.person} — ${(exec.title || '').slice(0, 45)}${(exec.title || '').length > 45 ? '…' : ''}`
+    : null;
+
+  // line 6: keywords
+  const kws    = (digest.keywords || []).slice(0, 5).join(', ');
+  const kwLine = kws ? `🔑 Keywords: ${kws}` : null;
+
   const lines = [
-    `*BrandMonitor — ${digest.company}*`,
-    `_${digest.timezone_label || digest.date} · ${digest.model_used}_`,
-    '',
-  ];
-
-  if (digest.crisis_flag?.triggered) {
-    lines.push(`🚨 *CRISIS ALERT:* ${digest.crisis_flag.reason}`);
-    lines.push('');
-  }
-
-  const topNews = (digest.news || []).slice(0, 3);
-  if (topNews.length) {
-    lines.push('*📰 Top News*');
-    topNews.forEach(n => lines.push(`• ${n.title} (${n.sentiment})`));
-    lines.push('');
-  }
-
-  const badReviews = (digest.reviews || []).filter(r => r.urgency === 'CRITICAL' || r.urgency === 'HIGH');
-  if (badReviews.length) {
-    lines.push('*⭐ Review Alerts*');
-    badReviews.slice(0, 2).forEach(r => lines.push(`• [${r.urgency}] ${r.platform} — "${r.excerpt?.slice(0, 80)}"`));
-    lines.push('');
-  }
-
-  if (digest.keywords?.length) {
-    lines.push(`*🔑 Keywords:* ${digest.keywords.slice(0, 5).join(', ')}`);
-  }
-
-  if (digest.watch_out) {
-    lines.push(`*👀 Watch Out:* ${digest.watch_out}`);
-  }
+    `🏢 *${company}* | 📅 ${date}`,
+    newsLine,
+    crisisLine,
+    reviewLine,
+    execLine,
+    kwLine,
+    '📧 Full digest in your inbox',
+  ].filter(Boolean);
 
   return lines.join('\n');
 }
 
-// send condensed digest via Twilio WhatsApp
-export async function sendWhatsAppDigest(digest, toNumber) {
-  try {
-    const sid   = process.env.TWILIO_ACCOUNT_SID;
-    const token = process.env.TWILIO_AUTH_TOKEN;
-    const from  = process.env.TWILIO_WHATSAPP_FROM || 'whatsapp:+14155238886';
+// get a Twilio client — returns null if TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN not set
+function getTwilioClient() {
+  const sid   = process.env.TWILIO_ACCOUNT_SID;
+  const token = process.env.TWILIO_AUTH_TOKEN;
+  if (!sid || sid === 'add_later' || !token || token === 'add_later') return null;
+  return twilio(sid, token);
+}
 
-    if (!sid || sid === 'add_later' || !token || token === 'add_later') {
-      return { ok: false, error: 'Twilio credentials not configured' };
+// normalise any phone format to whatsapp:+XXXXX
+function toWhatsAppAddr(number) {
+  if (!number) return '';
+  if (number.startsWith('whatsapp:')) return number;
+  return `whatsapp:${number.startsWith('+') ? number : '+' + number}`;
+}
+
+// send one compact WhatsApp message per company digest
+// accepts a single digest object OR an array — 2 s delay between messages
+export async function sendWhatsAppDigest(digestOrArray, whatsappNumber) {
+  if (!whatsappNumber) return { ok: false, error: 'No WhatsApp number configured' };
+
+  const client = getTwilioClient();
+  if (!client) return { ok: false, error: 'Twilio credentials not configured' };
+
+  const from    = process.env.TWILIO_WHATSAPP_FROM || 'whatsapp:+14155238886';
+  const to      = toWhatsAppAddr(whatsappNumber);
+  const digests = Array.isArray(digestOrArray) ? digestOrArray : [digestOrArray];
+  let   allOk   = true;
+
+  for (let i = 0; i < digests.length; i++) {
+    try {
+      const body = buildCompactMessage(digests[i]);
+      const msg  = await client.messages.create({ from, to, body });
+      console.log(`[whatsapp] ✓ sent to ${to} for ${digests[i].company} (sid: ${msg.sid})`);
+    } catch (err) {
+      console.error(`[whatsapp] ✗ failed for ${digests[i].company}:`, err.message);
+      allOk = false;
     }
+    // 2 s delay between messages — prevents Twilio rate limit + gives reader time
+    if (i < digests.length - 1) {
+      await new Promise(r => setTimeout(r, 2000));
+    }
+  }
 
-    const client = twilio(sid, token);
-    const body   = buildWhatsAppText(digest);
-    const to     = toNumber.startsWith('whatsapp:') ? toNumber : `whatsapp:${toNumber}`;
+  return { ok: allOk };
+}
 
-    const msg = await client.messages.create({ from, to, body });
-    return { ok: true, sid: msg.sid };
+// send a one-time test/verification message to confirm the number can receive messages
+export async function sendWhatsAppTest(whatsappNumber) {
+  if (!whatsappNumber) return { ok: false, error: 'No WhatsApp number provided' };
+
+  const client = getTwilioClient();
+  if (!client) {
+    return {
+      ok: false,
+      error: 'Twilio credentials not configured. Add TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN to Railway environment variables.',
+    };
+  }
+
+  const from = process.env.TWILIO_WHATSAPP_FROM || 'whatsapp:+14155238886';
+  const to   = toWhatsAppAddr(whatsappNumber);
+
+  try {
+    const msg = await client.messages.create({
+      from,
+      to,
+      body: `✅ *BrandMonitor connected!*\n\nYour daily digest will arrive here at 08:00 IST.\n\nReply STOP to unsubscribe.`,
+    });
+    console.log(`[whatsapp] ✓ test sent to ${to} (sid: ${msg.sid})`);
+    return { ok: true };
   } catch (err) {
-    console.error('WhatsApp send failed:', err.message);
+    console.error('[whatsapp] ✗ test failed:', err.message);
     return { ok: false, error: err.message };
   }
 }

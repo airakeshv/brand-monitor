@@ -107,6 +107,7 @@ export function initDB() {
   try { db.exec('ALTER TABLE settings ADD COLUMN workspace_id INTEGER'); } catch (_) {}
   try { db.exec("ALTER TABLE settings ADD COLUMN companies TEXT DEFAULT '[]'"); } catch (_) {}
   try { db.exec("ALTER TABLE settings ADD COLUMN plan TEXT DEFAULT 'pro'"); } catch (_) {}
+  try { db.exec('ALTER TABLE settings ADD COLUMN whatsapp_verified INTEGER DEFAULT 0'); } catch (_) {}
 
   // seed a single-user default row if none exists
   const row = db.prepare('SELECT id FROM settings WHERE id = 1').get();
@@ -147,7 +148,7 @@ function emptySettings(extras = {}) {
     pause_from: null, pause_to: null, email: '', whatsapp: '',
     slack_webhook: '', dev_webhook: '', crisis_sensitivity: 'medium',
     review_threshold: 3, sources_enabled: {}, companies: [], plan: 'pro',
-    news_lookback: '7d', ...extras,
+    news_lookback: '7d', whatsapp_verified: 0, ...extras,
   };
 }
 

@@ -5,7 +5,7 @@ import { searchAll } from '../services/searchService.js';
 import { applyNoiseFilter } from '../services/noiseFilter.js';
 import { runDigest } from '../services/digestService.js';
 import { sendDigestEmail, sendMultiCompanyDigestEmail } from '../services/emailService.js';
-import { sendWhatsAppDigest } from '../services/whatsappService.js';
+import { sendWhatsAppDigest, sendWhatsAppTest } from '../services/whatsappService.js';
 import { sendSlackDigest } from '../services/slackService.js';
 import { getDB, getSettings, getSettingsInternal, saveSettings } from '../models/user.js';
 import { getHistory, getDigestById } from '../models/digest.js';
@@ -302,7 +302,7 @@ router.post('/run-now', async (req, res) => {
 
       const deliveryResults = {};
       if (settings.email)         { send('Sending email…');    deliveryResults.email    = await sendDigestEmail(digest, settings.email); }
-      if (settings.whatsapp)      { send('Sending WhatsApp…'); deliveryResults.whatsapp = await sendWhatsAppDigest(digest, settings.whatsapp); }
+      if (settings.whatsapp)      { send('Sending WhatsApp…'); deliveryResults.whatsapp = await sendWhatsAppDigest([digest], settings.whatsapp); }
       if (settings.slack_webhook) { send('Sending Slack…');    deliveryResults.slack    = await sendSlackDigest(digest, settings.slack_webhook); }
 
       res.write(`data: ${JSON.stringify({ done: true, id, digest, delivery: deliveryResults })}\n\n`);
@@ -322,8 +322,7 @@ router.post('/run-now', async (req, res) => {
       }
       if (settings.whatsapp) {
         send('Sending WhatsApp…');
-        for (const d of digests) await sendWhatsAppDigest(d, settings.whatsapp);
-        deliveryResults.whatsapp = { ok: true };
+        deliveryResults.whatsapp = await sendWhatsAppDigest(digests, settings.whatsapp);
       }
       if (settings.slack_webhook) {
         send('Sending Slack…');
@@ -377,6 +376,22 @@ router.get('/schedule/history', (req, res) => {
     res.json(getDeliveryHistory(30, req.workspaceId));
   } catch (err) {
     res.status(500).json({ error: 'Failed to get delivery history' });
+  }
+});
+
+// send a test WhatsApp message to verify the number is reachable; marks it verified on success
+router.post('/settings/test-whatsapp', async (req, res) => {
+  try {
+    const { whatsapp_number } = req.body;
+    if (!whatsapp_number) return res.status(400).json({ ok: false, error: 'whatsapp_number is required' });
+    const result = await sendWhatsAppTest(whatsapp_number);
+    if (result.ok) {
+      saveSettings({ whatsapp_verified: 1 }, req.workspaceId);
+    }
+    res.json(result);
+  } catch (err) {
+    console.error('WhatsApp test error:', err.message);
+    res.status(500).json({ ok: false, error: err.message });
   }
 });
 

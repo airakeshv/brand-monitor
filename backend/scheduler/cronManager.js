@@ -92,13 +92,9 @@ async function deliverDigest(settings, workspaceId) {
     const r = await sendMultiCompanyDigestEmail(digests, settings.email);
     results.email_ok = r.ok ? 1 : 0;
   }
-  if (settings.whatsapp) {
-    let ok = true;
-    for (const digest of digests) {
-      const r = await sendWhatsAppDigest(digest, settings.whatsapp);
-      if (!r.ok) ok = false;
-    }
-    results.whatsapp_ok = ok ? 1 : 0;
+  if (settings.whatsapp && settings.whatsapp_verified) {
+    const r = await sendWhatsAppDigest(digests, settings.whatsapp);
+    results.whatsapp_ok = r.ok ? 1 : 0;
   }
   if (settings.slack_webhook) {
     let ok = true;
