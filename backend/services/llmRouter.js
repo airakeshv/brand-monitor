@@ -21,7 +21,7 @@ async function withRetry(fn, maxRetries = 2) {
 }
 
 // build a rule-based digest from raw search results when all LLMs are unavailable
-export function buildBasicDigest(company, results = []) {
+export function buildBasicDigest(company, results = [], timezone_label = 'UTC') {
   const today = new Date().toISOString().split('T')[0];
   const newsCategories = new Set(['india_news', 'global_news', 'news']);
 
@@ -63,7 +63,7 @@ export function buildBasicDigest(company, results = []) {
   const digest = {
     company,
     date: today,
-    timezone_label: 'UTC',
+    timezone_label,
     model_used: 'rule-based (LLM unavailable)',
     news,
     social,
@@ -129,7 +129,7 @@ export async function routeLLM(model, apiKey, prompt, context = {}) {
   // step 4 — rule-based digest from raw search results (never shows 503)
   if (context.company && context.results?.length > 0) {
     console.error('All LLMs unavailable — returning rule-based digest');
-    return buildBasicDigest(context.company, context.results);
+    return buildBasicDigest(context.company, context.results, context.timezone_label);
   }
 
   throw primaryErr;
@@ -204,13 +204,28 @@ async function callPerplexity(apiKey, prompt) {
   return { text, model_used: 'perplexity-api' };
 }
 
+// format the current server time in a given IANA timezone — "6:03 PM IST", "9:15 AM GMT"
+function fmtLocalTime(tz) {
+  try {
+    const now  = new Date();
+    const time = now.toLocaleTimeString('en-US', {
+      timeZone: tz, hour: 'numeric', minute: '2-digit', hour12: true,
+    });
+    const abbr = now.toLocaleTimeString('en-US', {
+      timeZone: tz, timeZoneName: 'short',
+    }).split(' ').pop();
+    return `${time} ${abbr}`;
+  } catch { return tz; }
+}
+
 // build DigestSchema prompt from search results and call the configured LLM
 export async function generateDigest(company, searchResults, settings = {}) {
   const model  = settings.llm_model   || 'gemini-2.5-flash';
   const apiKey = settings.llm_api_key || '';
   const lang   = settings.digest_language || 'English';
   const tz     = settings.timezone || 'Asia/Kolkata';
-  const today  = new Date().toISOString().split('T')[0];
+  const today          = new Date().toISOString().split('T')[0];
+  const timezone_label = fmtLocalTime(tz); // always server-computed — never rely on LLM to guess
 
   // cap at 60 results; pass person_badge for executive items so LLM populates executive_mentions
   const items = searchResults.slice(0, 60).map(r => ({
@@ -231,7 +246,7 @@ Return ONLY valid JSON — no markdown, no explanation — matching this exact s
 {
   "company": "${company}",
   "date": "${today}",
-  "timezone_label": "current local time in ${tz}",
+  "timezone_label": "${timezone_label}",
   "model_used": "${model}",
   "news": [{"title":"","source":"","url":"","sentiment":"positive|negative|neutral","emotion":"","snippet":""}],
   "social": [{"title":"","source":"","url":"","sentiment":"positive|negative|neutral","snippet":""}],
@@ -258,11 +273,12 @@ Rules:
 - crisis_flag.triggered = true if >30% of news is negative or there is a PR crisis
 - watch_out: one-sentence biggest risk, or null if nothing notable`;
 
-  const { text, model_used } = await routeLLM(model, apiKey, prompt, { company, results: searchResults });
+  const { text, model_used } = await routeLLM(model, apiKey, prompt, { company, results: searchResults, timezone_label });
 
   // strip markdown code fences if LLM wraps output
   const cleaned = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
   const digest  = JSON.parse(cleaned);
-  digest.model_used = model_used;
+  digest.model_used     = model_used;
+  digest.timezone_label = timezone_label; // always override with server-computed time
   return digest;
 }
