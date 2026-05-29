@@ -23,14 +23,22 @@ const TZ_ABBR = {
   'America/Sao_Paulo':     'BRT',
 };
 
-// build the timezone_label from scheduled delivery_time — never trust the LLM for this
+// build the timezone_label from the ACTUAL current time in the user's timezone
+// (was: used delivery_time, causing "6:00 AM IST" even when run at 6 PM)
 function buildTimezoneLabel(settings) {
-  const time = settings.delivery_time || '08:00';
-  const [hh, mm] = time.split(':').map(Number);
-  const hour12 = hh % 12 || 12;
-  const ampm = hh < 12 ? 'AM' : 'PM';
-  const abbr = TZ_ABBR[settings.timezone || 'Asia/Kolkata'] || settings.timezone || 'IST';
-  return `${hour12}:${String(mm).padStart(2, '0')} ${ampm} ${abbr}`;
+  const tz   = settings.timezone || 'Asia/Kolkata';
+  const abbr = TZ_ABBR[tz] || tz;
+  try {
+    const fmt = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      hour:     'numeric',
+      minute:   '2-digit',
+      hour12:   true,
+    });
+    return `${fmt.format(new Date())} ${abbr}`;
+  } catch {
+    return abbr;
+  }
 }
 
 // social platform domains/keywords — items from these always belong in social, not news
