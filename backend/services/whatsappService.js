@@ -1,12 +1,13 @@
 import twilio from 'twilio';
 
-// format date to "26 May 2026"
+// format date to "26 May 2026" — handles both "YYYY-MM-DD" and full ISO timestamps
 function fmtDate(iso) {
   if (!iso) return '';
   try {
-    return new Date(iso + 'T12:00:00Z').toLocaleDateString('en-IN', {
-      day: 'numeric', month: 'short', year: 'numeric',
-    });
+    const d = new Date(iso.includes('T') ? iso : iso + 'T12:00:00Z');
+    if (isNaN(d.getTime())) return iso;
+    const M = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return `${d.getUTCDate()} ${M[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
   } catch { return iso; }
 }
 
@@ -45,8 +46,10 @@ function buildCompactMessage(digest) {
   const kws    = (digest.keywords || []).slice(0, 5).join(', ');
   const kwLine = kws ? `🔑 Keywords: ${kws}` : null;
 
+  const timeLabel = digest.timezone_label ? ` · ${digest.timezone_label}` : '';
+
   const lines = [
-    `🏢 *${company}* | 📅 ${date}`,
+    `🏢 *${company}* | 📅 ${date}${timeLabel}`,
     newsLine,
     crisisLine,
     reviewLine,
