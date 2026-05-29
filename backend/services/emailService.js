@@ -1,10 +1,44 @@
 import { Resend } from 'resend';
+import sgMail from '@sendgrid/mail';
 
 // lazy singleton — only instantiated when a key is present
 let _resend = null;
 function getResend() {
   if (!_resend) _resend = new Resend(process.env.RESEND_API_KEY);
   return _resend;
+}
+
+// send an email via SendGrid HTTP API (HTTPS port 443 — works from Railway)
+async function sendViaSendGrid({ to, subject, html, text }) {
+  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+  const from = (process.env.SENDGRID_FROM || '').trim();
+  try {
+    await sgMail.send({ to, from, subject, html, text });
+  } catch (err) {
+    const details = err.response?.body?.errors?.map(e => e.message).join(' | ') || err.message;
+    throw new Error(details);
+  }
+}
+
+// send an email via Resend HTTP API — restricted to account-owner email on free tier without custom domain
+async function sendViaResend({ to, subject, html, text }) {
+  const from = process.env.RESEND_FROM || 'BrandMonitor <onboarding@resend.dev>';
+  const { error } = await getResend().emails.send({ from, to, subject, html, text });
+  if (error) throw new Error(error.message);
+}
+
+// unified email dispatcher — SendGrid → Resend → console
+async function dispatchEmail({ to, subject, html, text }) {
+  if (process.env.SENDGRID_API_KEY && process.env.SENDGRID_FROM) {
+    await sendViaSendGrid({ to, subject, html, text });
+    return;
+  }
+  if (process.env.RESEND_API_KEY && process.env.RESEND_API_KEY !== 'add_later') {
+    await sendViaResend({ to, subject, html, text });
+    return;
+  }
+  // dev fallback — no email provider configured
+  console.log(`[email] ⚠ No email provider configured. Would have sent "${subject}" to ${to}`);
 }
 
 // map sentiment to a colour
@@ -209,30 +243,17 @@ function buildText(digest) {
   return lines.filter(Boolean).join('\n');
 }
 
-// send digest email via Resend
+// send digest email — uses SendGrid if configured, falls back to Resend, then console log
 export async function sendDigestEmail(digest, toEmail) {
   try {
-    if (!process.env.RESEND_API_KEY || process.env.RESEND_API_KEY === 'add_later') {
-      console.error('Resend API key not configured');
-      return { ok: false, error: 'Resend key not set' };
-    }
-
     const crisisPrefix = digest.crisis_flag?.triggered ? '🚨 CRISIS ALERT — ' : '';
-    const rangeLabel  = digest.search_from && digest.search_to
+    const rangeLabel   = digest.search_from && digest.search_to
       ? ` · ${fmtReadable(digest.search_from)} – ${fmtReadable(digest.search_to)}`
       : '';
     const subject = `${crisisPrefix}${digest.company} Brand Digest · ${fmtReadable(digest.date) || digest.date}${digest.timezone_label ? ' ' + digest.timezone_label : ''}${rangeLabel}`;
 
-    const { data, error } = await getResend().emails.send({
-      from: process.env.RESEND_FROM || 'BrandMonitor <onboarding@resend.dev>',
-      to: toEmail,
-      subject,
-      html: buildHtml(digest),
-      text: buildText(digest),
-    });
-
-    if (error) throw new Error(error.message);
-    return { ok: true, id: data?.id };
+    await dispatchEmail({ to: toEmail, subject, html: buildHtml(digest), text: buildText(digest) });
+    return { ok: true };
   } catch (err) {
     console.error('Email send failed:', err.message);
     return { ok: false, error: err.message };
@@ -416,14 +437,11 @@ function buildMultiCompanyText(digests) {
   return lines.join('\n');
 }
 
-// send one combined email covering all companies — falls back to single format if only 1 digest
+// send one combined email covering all companies — uses SendGrid if configured, falls back to Resend
 export async function sendMultiCompanyDigestEmail(digests, toEmail) {
   if (!digests?.length) return { ok: false, error: 'No digests provided' };
   if (digests.length === 1) return sendDigestEmail(digests[0], toEmail);
   try {
-    if (!process.env.RESEND_API_KEY || process.env.RESEND_API_KEY === 'add_later') {
-      return { ok: false, error: 'Resend key not set' };
-    }
     const companies    = digests.map(d => d.company);
     const date         = digests[0]?.date;
     const tzLabel      = digests[0]?.timezone_label;
@@ -431,15 +449,9 @@ export async function sendMultiCompanyDigestEmail(digests, toEmail) {
     const crisisPrefix = anycrisis ? '🚨 CRISIS — ' : '';
     const label        = companies.slice(0, 2).join(', ') + (companies.length > 2 ? ` +${companies.length - 2} more` : '');
     const subject      = `${crisisPrefix}${label} Brand Digest · ${fmtReadable(date)||date}${tzLabel ? ' ' + tzLabel : ''}`;
-    const { data, error } = await getResend().emails.send({
-      from: process.env.RESEND_FROM || 'BrandMonitor <onboarding@resend.dev>',
-      to:   toEmail,
-      subject,
-      html: buildMultiCompanyHtml(digests),
-      text: buildMultiCompanyText(digests),
-    });
-    if (error) throw new Error(error.message);
-    return { ok: true, id: data?.id };
+
+    await dispatchEmail({ to: toEmail, subject, html: buildMultiCompanyHtml(digests), text: buildMultiCompanyText(digests) });
+    return { ok: true };
   } catch (err) {
     console.error('Multi-company email send failed:', err.message);
     return { ok: false, error: err.message };
