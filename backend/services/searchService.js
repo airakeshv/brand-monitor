@@ -1,6 +1,7 @@
 import axios from 'axios';
 
-const SERPER_URL = 'https://google.serper.dev/search';
+const SERPER_URL      = 'https://google.serper.dev/search';
+const SERPER_NEWS_URL = 'https://google.serper.dev/news'; // dedicated news endpoint — no site: operator limit
 
 // generic Serper search — returns array of result objects; auto-retries on 429 rate limit
 async function serperSearch(query, params = {}, attempt = 0) {
@@ -33,6 +34,29 @@ async function serperSearch(query, params = {}, attempt = 0) {
   }
 }
 
+// Serper /news endpoint search — returns news[] array; used for India/global news to avoid site: operator limit
+async function serperNewsSearch(query, params = {}, attempt = 0) {
+  try {
+    const res = await axios.post(
+      SERPER_NEWS_URL,
+      { q: query, num: 10, ...params },
+      { headers: { 'X-API-KEY': process.env.SERPER_API_KEY, 'Content-Type': 'application/json' } }
+    );
+    return res.data.news || [];
+  } catch (err) {
+    const status = err.response?.status;
+    if (status === 429 && attempt < 2) {
+      const waitMs = (attempt + 1) * 2000;
+      console.log(`[serper-news] rate limited — retrying in ${waitMs / 1000}s…`);
+      await new Promise(r => setTimeout(r, waitMs));
+      return serperNewsSearch(query, params, attempt + 1);
+    }
+    if (err.response?.data) console.error('[serper-news] error:', JSON.stringify(err.response.data).slice(0, 200));
+    console.error(`Serper news search failed for "${query}":`, err.message);
+    return [];
+  }
+}
+
 // run an array of task functions in batches of batchSize — prevents bursting Serper with 10+ concurrent requests
 async function runBatched(taskFns, batchSize = 3, delayMs = 300) {
   const results = [];
@@ -58,29 +82,17 @@ function toTbs(lookback = '7d', dateFrom = null, dateTo = null) {
   return 'qdr:w';
 }
 
-// 2 grouped OR queries instead of 10 single-site calls — same coverage, 5× fewer API requests
-const INDIA_SITE_GROUPS = [
-  'site:timesofindia.com OR site:economictimes.com OR site:hindustantimes.com OR site:moneycontrol.com OR site:ndtv.com',
-  'site:livemint.com OR site:business-standard.com OR site:thehindu.com OR site:financialexpress.com OR site:businesstoday.in',
-];
-
-// search India-specific news sources — 2 grouped queries cover all 10 sites
+// search India-specific news — uses /news endpoint with gl:'in' geo-targeting
+// switched from site: OR groups (5 operators) which exceed Serper free-plan query limits → 400 errors
 export async function searchIndiaNews(company, tbs = 'qdr:w') {
-  const results = await Promise.all(
-    INDIA_SITE_GROUPS.map(sites =>
-      serperSearch(`${company} (${sites})`, { tbs, num: 15 }).then(items =>
-        items.map(r => ({ ...r, source_category: 'india_news' }))
-      )
-    )
-  );
-  return results.flat();
+  const results = await serperNewsSearch(company, { gl: 'in', num: 15, tbs });
+  return results.map(r => ({ ...r, source_category: 'india_news' }));
 }
 
-// search global news (Reuters, BBC, Bloomberg, FT, WSJ)
+// search global news — uses /news endpoint with gl:'us' for international wire coverage
 export async function searchGlobalNews(company, tbs = 'qdr:w') {
-  const sites = 'site:reuters.com OR site:bbc.com OR site:bloomberg.com OR site:ft.com OR site:wsj.com';
-  const num   = tbs.startsWith('cdr:') ? 20 : 10;
-  const results = await serperSearch(`${company} (${sites})`, { tbs, num });
+  const num = tbs.startsWith('cdr:') ? 20 : 10;
+  const results = await serperNewsSearch(company, { gl: 'us', num, tbs });
   return results.map(r => ({ ...r, source_category: 'global_news' }));
 }
 
@@ -142,17 +154,16 @@ export async function searchLinkedIn(company) {
 // catch-all: finds coverage from any outlet not in the site-specific lists
 export async function searchGeneralNews(company, tbs = 'qdr:w') {
   if (tbs.startsWith('cdr:')) {
-    // for date ranges: no content-type filter — catches investment/expansion/launch articles
-    // that don't use words like "news" or "announcement" in their headline
+    // for date ranges: broad catch-all — limited to 2 -site: operators (Serper free-plan limit)
     const results = await serperSearch(
-      `"${company}" -site:glassdoor.com -site:g2.com -site:trustpilot.com -site:reddit.com`,
+      `"${company}" -site:glassdoor.com -site:g2.com`,
       { tbs, num: 50 }
     );
     return results.map(r => ({ ...r, source_category: 'india_news' }));
   }
-  // for recent lookback: content filter reduces noise from job boards / reviews
+  // for recent lookback: content filter — max 2 negative site: operators (Serper free-plan limit)
   const results = await serperSearch(
-    `"${company}" (news OR press release OR announcement) -site:glassdoor.com -site:g2.com -site:trustpilot.com`,
+    `"${company}" (news OR press release OR announcement) -site:glassdoor.com -site:g2.com`,
     { tbs, num: 10 }
   );
   return results.map(r => ({ ...r, source_category: 'india_news' }));
