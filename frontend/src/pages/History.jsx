@@ -9,10 +9,14 @@ function crisisColor(triggered) {
   return triggered ? '#ef4444' : '#22c55e';
 }
 
-// format ISO date string for display
+// format SQLite UTC timestamp for display in user's local timezone
+// SQLite datetime('now') → "YYYY-MM-DD HH:MM:SS" with no Z suffix;
+// without the Z the browser treats it as local time — appending Z forces UTC parse
 function fmtDate(iso) {
-  try { return new Date(iso).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }); }
-  catch { return iso; }
+  try {
+    const utc = iso.includes('T') || iso.includes('+') ? iso : iso.replace(' ', 'T') + 'Z';
+    return new Date(utc).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+  } catch { return iso; }
 }
 
 // single digest row in the list
