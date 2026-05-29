@@ -67,6 +67,51 @@ function NewsRow({ item }) {
   );
 }
 
+// executive mention row — person-name badge (pink) + source + sentiment + title + snippet
+function ExecutiveMentionRow({ item }) {
+  return (
+    <div style={{ padding: '10px 0', borderBottom: '1px solid #2A3858' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+        {item.person && (
+          <span style={{
+            background: 'rgba(233,30,140,0.15)',
+            color: '#E91E8C',
+            border: '1px solid rgba(233,30,140,0.35)',
+            borderRadius: '999px',
+            padding: '2px 10px',
+            fontSize: 11,
+            fontWeight: 700,
+          }}>
+            👤 {item.person}
+          </span>
+        )}
+        {item.source && <SourceBadge source={item.source} />}
+        {item.sentiment && (
+          <span style={{
+            background: sentimentColor(item.sentiment),
+            color: '#0A0E27',
+            borderRadius: '999px',
+            padding: '2px 8px',
+            fontSize: 11,
+            fontWeight: 600,
+          }}>
+            {item.sentiment}
+          </span>
+        )}
+      </div>
+      <div style={{ marginTop: 6 }}>
+        <a href={item.url || '#'} target="_blank" rel="noreferrer"
+          style={{ color: '#FFFFFF', fontWeight: 600, textDecoration: 'none' }}>
+          {item.title}
+        </a>
+      </div>
+      {item.snippet && (
+        <div style={{ color: '#B4B4B4', fontSize: 13, marginTop: 4 }}>{item.snippet}</div>
+      )}
+    </div>
+  );
+}
+
 // single review row
 function ReviewRow({ item }) {
   const uc = urgencyColor(item.urgency);
@@ -125,15 +170,17 @@ function Sparkline({ data = [] }) {
 export default function DigestPreview({ digest }) {
   if (!digest) return null;
 
-  const hasCrisis   = digest.crisis_flag?.triggered;
-  const news        = (digest.news     || []).filter(n => n.title);
-  const social      = (digest.social   || []).filter(s => s.title);
-  const reviews     = (digest.reviews  || []).filter(r => r.excerpt || r.platform);
-  const keywords    = (digest.keywords || []).filter(Boolean);
-  const hasNews     = news.length > 0;
-  const hasSocial   = social.length > 0;
-  const hasReviews  = reviews.length > 0;
-  const hasKeywords = keywords.length > 0;
+  const hasCrisis    = digest.crisis_flag?.triggered;
+  const news         = (digest.news               || []).filter(n => n.title);
+  const social       = (digest.social             || []).filter(s => s.title);
+  const executives   = (digest.executive_mentions || []).filter(e => e.title);
+  const reviews      = (digest.reviews            || []).filter(r => r.excerpt || r.platform);
+  const keywords     = (digest.keywords           || []).filter(Boolean);
+  const hasNews      = news.length > 0;
+  const hasSocial    = social.length > 0;
+  const hasExecutives = executives.length > 0;
+  const hasReviews   = reviews.length > 0;
+  const hasKeywords  = keywords.length > 0;
 
   return (
     <div style={{ background: '#111830', border: '1px solid #2A3858', borderRadius: 16, overflow: 'hidden' }}>
@@ -184,6 +231,14 @@ export default function DigestPreview({ digest }) {
           <div style={{ marginBottom: 20 }}>
             <SectionLabel>News Highlights</SectionLabel>
             {news.map((n, i) => <NewsRow key={i} item={n} />)}
+          </div>
+        )}
+
+        {/* executive mentions */}
+        {hasExecutives && (
+          <div style={{ marginBottom: 20 }}>
+            <SectionLabel>Executive Mentions</SectionLabel>
+            {executives.map((e, i) => <ExecutiveMentionRow key={i} item={e} />)}
           </div>
         )}
 

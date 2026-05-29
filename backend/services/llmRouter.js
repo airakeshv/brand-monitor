@@ -48,6 +48,18 @@ export function buildBasicDigest(company, results = []) {
       snippet: r.snippet || '',
     }));
 
+  const executives = results
+    .filter(r => r.source_category === 'executive')
+    .slice(0, 5)
+    .map(r => ({
+      person:    r.person_badge || '',
+      title:     r.title || '',
+      source:    r.source || r.displayLink || '',
+      url:       r.link || r.url || '',
+      sentiment: 'neutral',
+      snippet:   r.snippet || '',
+    }));
+
   const digest = {
     company,
     date: today,
@@ -55,6 +67,7 @@ export function buildBasicDigest(company, results = []) {
     model_used: 'rule-based (LLM unavailable)',
     news,
     social,
+    executive_mentions: executives,
     reviews: [],
     ai_visibility: [],
     competitor_signals: [],
@@ -199,13 +212,14 @@ export async function generateDigest(company, searchResults, settings = {}) {
   const tz     = settings.timezone || 'Asia/Kolkata';
   const today  = new Date().toISOString().split('T')[0];
 
-  // cap at 60 results to stay within token limits
+  // cap at 60 results; pass person_badge for executive items so LLM populates executive_mentions
   const items = searchResults.slice(0, 60).map(r => ({
     title:    r.title    || r.name || '',
     source:   r.source   || r.displayLink || '',
     url:      r.link     || r.url || '',
     snippet:  r.snippet  || '',
     category: r.source_category || 'news',
+    ...(r.person_badge && { person_badge: r.person_badge }),
   }));
 
   const prompt = `You are a brand intelligence analyst. Analyze these search results for "${company}" and return a single JSON object. Respond in ${lang}.
@@ -221,6 +235,7 @@ Return ONLY valid JSON — no markdown, no explanation — matching this exact s
   "model_used": "${model}",
   "news": [{"title":"","source":"","url":"","sentiment":"positive|negative|neutral","emotion":"","snippet":""}],
   "social": [{"title":"","source":"","url":"","sentiment":"positive|negative|neutral","snippet":""}],
+  "executive_mentions": [{"person":"","title":"","source":"","url":"","sentiment":"positive|negative|neutral","snippet":""}],
   "reviews": [{"platform":"","rating":0,"excerpt":"","urgency":"low|medium|high","draft_response":""}],
   "ai_visibility": [{"engine":"","summary":"","accuracy_flag":true}],
   "competitor_signals": [{"company":"","signal_type":"","detail":""}],
@@ -235,6 +250,7 @@ Return ONLY valid JSON — no markdown, no explanation — matching this exact s
 Rules:
 - news: up to 10 items from india_news / global_news categories; include sentiment per article
 - social: up to 5 items from social / reddit / twitter categories
+- executive_mentions: up to 5 items where category is 'executive'; set person = the item's person_badge value; include sentiment
 - reviews: up to 5 items from review category; urgency = high if rating ≤ 2
 - keywords: top 8 brand-related terms from the results
 - sov.company_pct: estimated 0-100 share of voice vs competitors
@@ -242,7 +258,7 @@ Rules:
 - crisis_flag.triggered = true if >30% of news is negative or there is a PR crisis
 - watch_out: one-sentence biggest risk, or null if nothing notable`;
 
-  const { text, model_used } = await routeLLM(model, apiKey, prompt);
+  const { text, model_used } = await routeLLM(model, apiKey, prompt, { company, results: searchResults });
 
   // strip markdown code fences if LLM wraps output
   const cleaned = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
