@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import DigestPreview from '../components/DigestPreview.jsx';
 import { useWorkspace } from '../context/WorkspaceContext.jsx';
 
@@ -67,6 +68,7 @@ function DigestRow({ row, onSelect, isSelected }) {
 // past digests list + inline preview
 export default function History() {
   const { activeWorkspaceId } = useWorkspace();
+  const navigate = useNavigate();
   const [rows,     setRows]     = useState([]);
   const [selected, setSelected] = useState(null);
   const [loading,  setLoading]  = useState(true);
@@ -94,57 +96,82 @@ export default function History() {
   const selectedDigest = selected?.digest || null;
 
   return (
-    <div style={{ maxWidth: 1100, margin: '0 auto', display: 'flex', gap: 28, alignItems: 'flex-start' }}>
+    <>
+      {/* responsive layout: side-by-side on desktop, stacked on mobile */}
+      <div className="history-layout" style={{ maxWidth: 1100, margin: '0 auto', display: 'flex', gap: 28, alignItems: 'flex-start' }}>
 
-      {/* list column */}
-      <div style={{ flex: '0 0 380px' }}>
-        <div style={{ marginBottom: 20 }}>
-          <h1 style={{ color: '#FFFFFF', fontSize: 24, fontWeight: 700, margin: 0 }}>Digest History</h1>
-          <p style={{ color: '#B4B4B4', fontSize: 14, marginTop: 6 }}>
-            {rows.length} digest{rows.length !== 1 ? 's' : ''} · click to preview
-          </p>
+        {/* list column */}
+        <div className="history-list-col" style={{ flex: '0 0 380px' }}>
+          <div style={{ marginBottom: 20 }}>
+            <h1 style={{ color: '#FFFFFF', fontSize: 24, fontWeight: 700, margin: 0 }}>Digest History</h1>
+            <p style={{ color: '#B4B4B4', fontSize: 14, marginTop: 6 }}>
+              {rows.length} digest{rows.length !== 1 ? 's' : ''} · click to preview
+            </p>
+          </div>
+
+          {loading && (
+            <div style={{ color: '#6B7A99', fontSize: 14 }}>Loading…</div>
+          )}
+
+          {/* empty state — shown when no digests exist */}
+          {!loading && rows.length === 0 && (
+            <div style={{
+              background: '#111830', border: '1px dashed #2A3858', borderRadius: 12,
+              padding: '48px 24px', textAlign: 'center', color: '#6B7A99',
+            }}>
+              <div style={{ fontSize: 48, marginBottom: 14 }}>📊</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: '#FFFFFF', marginBottom: 8 }}>No digests yet</div>
+              <div style={{ fontSize: 13, color: '#B4B4B4', lineHeight: 1.6, marginBottom: 20 }}>
+                Run your first search from the Dashboard<br />to see your digest history here.
+              </div>
+              <button
+                onClick={() => navigate('/dashboard')}
+                style={{
+                  background: 'linear-gradient(135deg,#5B63EB,#E91E8C)',
+                  color: '#fff', border: 'none', borderRadius: 8,
+                  padding: '10px 22px', fontSize: 14, fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                Go to Dashboard
+              </button>
+            </div>
+          )}
+
+          {rows.map(row => (
+            <DigestRow
+              key={row.id}
+              row={row}
+              onSelect={handleSelect}
+              isSelected={selected?.id === row.id}
+            />
+          ))}
         </div>
 
-        {loading && (
-          <div style={{ color: '#6B7A99', fontSize: 14 }}>Loading…</div>
-        )}
+        {/* preview column */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {selectedDigest ? (
+            <DigestPreview digest={selectedDigest} />
+          ) : (
+            <div style={{
+              background: '#111830', border: '1px dashed #2A3858', borderRadius: 14,
+              padding: '60px 24px', textAlign: 'center', color: '#6B7A99',
+            }}>
+              <div style={{ fontSize: 36, marginBottom: 12 }}>👈</div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: '#B4B4B4' }}>Select a digest to preview it</div>
+            </div>
+          )}
+        </div>
 
-        {!loading && rows.length === 0 && (
-          <div style={{
-            background: '#111830', border: '1px dashed #2A3858', borderRadius: 12,
-            padding: '40px 20px', textAlign: 'center', color: '#6B7A99',
-          }}>
-            <div style={{ fontSize: 32, marginBottom: 10 }}>📋</div>
-            <div style={{ fontSize: 14, fontWeight: 600, color: '#B4B4B4' }}>No history yet</div>
-            <div style={{ fontSize: 13, marginTop: 4 }}>Run a digest from the Dashboard first</div>
-          </div>
-        )}
-
-        {rows.map(row => (
-          <DigestRow
-            key={row.id}
-            row={row}
-            onSelect={handleSelect}
-            isSelected={selected?.id === row.id}
-          />
-        ))}
       </div>
 
-      {/* preview column */}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        {selectedDigest ? (
-          <DigestPreview digest={selectedDigest} />
-        ) : (
-          <div style={{
-            background: '#111830', border: '1px dashed #2A3858', borderRadius: 14,
-            padding: '60px 24px', textAlign: 'center', color: '#6B7A99',
-          }}>
-            <div style={{ fontSize: 36, marginBottom: 12 }}>👈</div>
-            <div style={{ fontSize: 14, fontWeight: 600, color: '#B4B4B4' }}>Select a digest to preview it</div>
-          </div>
-        )}
-      </div>
-
-    </div>
+      {/* mobile responsive: stack list and preview vertically below sm */}
+      <style>{`
+        @media (max-width: 640px) {
+          .history-layout { flex-direction: column !important; }
+          .history-list-col { flex: 1 1 100% !important; width: 100%; }
+        }
+      `}</style>
+    </>
   );
 }

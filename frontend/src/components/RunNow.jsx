@@ -9,6 +9,27 @@ const BORDER_COLOR = {
   review: '#22c55e',
 };
 
+// decode email from JWT for success message
+function getEmail() {
+  try {
+    const t = localStorage.getItem('bm_token');
+    if (!t) return null;
+    return JSON.parse(atob(t.split('.')[1])).email;
+  } catch { return null; }
+}
+
+// map HTTP status codes and network errors to friendly messages
+function friendlyError(err) {
+  const msg = err?.message || '';
+  if (msg.includes('401')) return 'Your session has expired. Logging you out…';
+  if (msg.includes('403')) return 'This feature requires a Pro plan upgrade.';
+  if (msg.includes('404')) return 'Not found — please try again.';
+  if (msg.includes('500')) return 'Something went wrong on our end. Please try again in a moment.';
+  if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('Load failed'))
+    return 'Cannot reach the server. Check your internet connection.';
+  return msg || 'An unexpected error occurred.';
+}
+
 // one news / social row
 function ResultRow({ item, type }) {
   const sentColor = item.sentiment === 'positive' ? '#22c55e'
@@ -63,7 +84,7 @@ function DigestDisplay({ digest }) {
       )}
       {news.length > 0 && (
         <section style={{ marginBottom: 16 }}>
-          <h4 style={{ color: '#3B9EFF', fontSize: 12, fontWeight: 700, marginBottom: 8,
+          <h4 style={{ color: '#3B9EFF', fontSize: 12, fontWeight: 700,
             textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 8px' }}>
             News ({news.length})
           </h4>
@@ -116,16 +137,20 @@ function DigestDisplay({ digest }) {
 // streams SSE from /api/run-now, calls onDigest when done
 export default function RunNow({ company, dateFrom, dateTo, onDigest }) {
   const { activeWorkspaceId } = useWorkspace();
-  const [state,  setState]  = useState('idle'); // idle | running | done | error
-  const [log,    setLog]    = useState([]);
-  const [err,    setErr]    = useState('');
-  const [digest, setDigest] = useState(null);
+  const [state,      setState]      = useState('idle'); // idle | running | done | error
+  const [step,       setStep]       = useState('');     // searching | generating | validating
+  const [log,        setLog]        = useState([]);
+  const [err,        setErr]        = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
+  const [digest,     setDigest]     = useState(null);
 
   const handleRun = async () => {
     if (!company?.trim()) return;
     setState('running');
+    setStep('searching');
     setLog([]);
     setErr('');
+    setSuccessMsg('');
     setDigest(null);
 
     try {
@@ -145,6 +170,12 @@ export default function RunNow({ company, dateFrom, dateTo, onDigest }) {
 
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
+        if (res.status === 401) {
+          setErr('Your session has expired. Logging you out…');
+          setState('error');
+          setTimeout(() => { localStorage.removeItem('bm_token'); window.location.href = '/login'; }, 2000);
+          return;
+        }
         throw new Error(j.error || `HTTP ${res.status}`);
       }
 
@@ -165,27 +196,49 @@ export default function RunNow({ company, dateFrom, dateTo, onDigest }) {
           const payload = JSON.parse(line.slice(5).trim());
 
           if (payload.error) {
-            setErr(payload.error);
+            setErr(friendlyError(new Error(payload.error)));
             setState('error');
             return;
           }
           if (payload.message) {
             setLog(prev => [...prev, payload.message]);
+            // update step label from progress messages
+            const m = payload.message.toLowerCase();
+            if (m.includes('searching'))                           setStep('searching');
+            else if (m.includes('generating') || m.includes('found')) setStep('generating');
+            else if (m.includes('validating'))                     setStep('validating');
           }
           if (payload.done) {
             setState('done');
             setDigest(payload.digest);
+            // build delivery success message
+            const delivered = Object.entries(payload.delivery || {}).filter(([, v]) => v?.ok).map(([k]) => k);
+            const email = getEmail();
+            if (delivered.includes('email') && email) {
+              setSuccessMsg(`Digest emailed to ${email} ✓`);
+            } else if (delivered.length > 0) {
+              setSuccessMsg(`Digest sent via ${delivered.join(', ')} ✓`);
+            } else {
+              setSuccessMsg('Digest generated ✓ — configure a delivery channel in Settings to receive it');
+            }
             onDigest?.(payload.digest, payload.delivery);
           }
         }
       }
     } catch (e) {
-      setErr(e.message);
+      setErr(friendlyError(e));
       setState('error');
     }
   };
 
   const isRunning = state === 'running';
+
+  // button label shows current step when running
+  const btnLabel = isRunning
+    ? (step === 'generating' ? 'Generating…'
+      : step === 'validating' ? 'Validating…'
+      : 'Searching…')
+    : state === 'done' ? 'Run Again' : 'Run Now';
 
   return (
     <div>
@@ -215,8 +268,15 @@ export default function RunNow({ company, dateFrom, dateTo, onDigest }) {
             display: 'inline-block', animation: 'spin 0.7s linear infinite',
           }} />
         )}
-        {isRunning ? 'Running…' : state === 'done' ? 'Run Again' : 'Run Now'}
+        {btnLabel}
       </button>
+
+      {/* success message after digest completes */}
+      {successMsg && state === 'done' && (
+        <div style={{ marginTop: 10, color: '#22c55e', fontSize: 13, fontWeight: 600 }}>
+          {successMsg}
+        </div>
+      )}
 
       {/* progress log */}
       {log.length > 0 && (
@@ -230,20 +290,22 @@ export default function RunNow({ company, dateFrom, dateTo, onDigest }) {
         </div>
       )}
 
-      {/* error state with retry */}
+      {/* error state with retry button */}
       {err && (
         <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <span style={{ color: '#ef4444', fontSize: 13 }}>✗ {err}</span>
-          <button
-            onClick={handleRun}
-            style={{
-              background: '#2A3858', color: '#B4B4B4', border: 'none',
-              borderRadius: 6, padding: '4px 12px', fontSize: 12,
-              fontWeight: 600, cursor: 'pointer',
-            }}
-          >
-            Retry
-          </button>
+          {state !== 'running' && (
+            <button
+              onClick={handleRun}
+              style={{
+                background: '#2A3858', color: '#B4B4B4', border: 'none',
+                borderRadius: 6, padding: '4px 12px', fontSize: 12,
+                fontWeight: 600, cursor: 'pointer',
+              }}
+            >
+              Retry
+            </button>
+          )}
         </div>
       )}
 

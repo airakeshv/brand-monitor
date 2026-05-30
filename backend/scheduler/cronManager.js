@@ -92,7 +92,7 @@ async function deliverDigest(settings, workspaceId) {
     const r = await sendMultiCompanyDigestEmail(digests, settings.email);
     results.email_ok = r.ok ? 1 : 0;
   }
-  if (settings.whatsapp && settings.whatsapp_verified) {
+  if (settings.whatsapp) {
     const r = await sendWhatsAppDigest(digests, settings.whatsapp);
     results.whatsapp_ok = r.ok ? 1 : 0;
   }

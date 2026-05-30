@@ -503,6 +503,16 @@ function ScheduleTab({ s, set, onActivate, onStop, schedMsg }) {
   const lookbackLabel = { '1d':'yesterday only', '7d':'last 7 days', '30d':'last 30 days' }[s.news_lookback || '7d'] || 'last 7 days';
   const channelList   = [s.email && 'Email', s.whatsapp && 'WhatsApp', s.slack_webhook && 'Slack'].filter(Boolean).join(', ');
 
+  // spinner element for loading states
+  const Spinner = () => (
+    <span style={{
+      display:'inline-block', width:12, height:12,
+      border:'2px solid currentColor', borderTopColor:'transparent',
+      borderRadius:'50%', animation:'spin 0.6s linear infinite',
+      marginLeft:6, verticalAlign:'middle',
+    }} />
+  );
+
   return (
     <div>
 
@@ -623,9 +633,12 @@ function ScheduleTab({ s, set, onActivate, onStop, schedMsg }) {
               fontWeight:700, fontSize:13, whiteSpace:'nowrap',
               cursor: (waTestState === 'sending' || waTen.replace(/\D/g,'').length < 10) ? 'not-allowed' : 'pointer',
               opacity: waTen.replace(/\D/g,'').length < 10 ? 0.5 : 1,
+              display:'flex', alignItems:'center', gap:6,
             }}
           >
-            {waTestState === 'sending' ? 'Sending…' : waTestState === 'sent' ? 'Sent ✓' : 'Send test'}
+            {waTestState === 'sending' ? (
+              <><span>Sending…</span><Spinner /></>
+            ) : waTestState === 'sent' ? 'Sent ✓' : 'Send test'}
           </button>
         </div>
         {waTestMsg && (
@@ -655,9 +668,12 @@ function ScheduleTab({ s, set, onActivate, onStop, schedMsg }) {
               color:'#fff', border:'none', borderRadius:8, padding:'10px 20px',
               fontWeight:700, cursor: runState === 'running' ? 'not-allowed' : 'pointer', fontSize:14,
               opacity: !s.company_name?.trim() ? 0.5 : 1,
+              display:'flex', alignItems:'center', gap:6,
             }}
           >
-            {runState === 'running' ? 'Running…' : 'Send Test Digest Now'}
+            {runState === 'running' ? (
+              <><span>Sending…</span><Spinner /></>
+            ) : 'Send Test Digest Now'}
           </button>
           {runMsg && <div style={{ marginTop:8, color:runColor, fontSize:13 }}>{runMsg}</div>}
           {!s.email && !s.whatsapp && !s.slack_webhook && (
@@ -797,6 +813,7 @@ export default function Settings() {
   const [loaded,   setLoaded]   = useState(false);
   const [saving,   setSaving]   = useState(false);
   const [saved,    setSaved]    = useState(false);
+  const [saveErr,  setSaveErr]  = useState('');
   const [schedMsg, setSchedMsg] = useState(null);
 
   // helper: auth + workspace headers
@@ -830,16 +847,33 @@ export default function Settings() {
       .catch(() => setLoaded(true));
   }, [activeWorkspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // save settings with friendly error handling
   const handleSave = async () => {
-    setSaving(true); setSaved(false);
+    setSaving(true); setSaved(false); setSaveErr('');
     try {
       const r = await fetch(`${API}/api/settings`, {
         method: 'PUT',
         headers: wsHeaders(),
         body: JSON.stringify(settings),
       });
-      if (r.ok) { setSaved(true); setTimeout(() => setSaved(false), 3000); }
-    } catch (_) {}
+      if (r.ok) {
+        setSaved(true);
+        setTimeout(() => setSaved(false), 3000);
+      } else if (r.status === 401) {
+        setSaveErr('Your session has expired. Logging you out…');
+        setTimeout(() => { localStorage.removeItem('bm_token'); window.location.href = '/login'; }, 2000);
+      } else if (r.status === 403) {
+        setSaveErr('This feature requires a Pro plan upgrade.');
+      } else {
+        setSaveErr('Failed to save settings. Please try again.');
+      }
+    } catch (err) {
+      setSaveErr(
+        (err?.message || '').includes('fetch') || (err?.message || '').includes('Failed')
+          ? 'Cannot reach the server. Check your internet connection.'
+          : 'Failed to save settings. Please try again.'
+      );
+    }
     setSaving(false);
   };
 
@@ -881,13 +915,30 @@ export default function Settings() {
 
   return (
     <div style={{ maxWidth:720, margin:'0 auto' }}>
+
+      {/* page heading */}
       <div style={{ marginBottom:24 }}>
         <h1 style={{ color:'#FFFFFF', fontSize:24, fontWeight:700, margin:0 }}>Settings</h1>
         <p style={{ color:'#B4B4B4', fontSize:14, marginTop:6 }}>Configure your brand monitoring preferences.</p>
       </div>
 
-      {/* tab bar */}
-      <div style={{ display:'flex', borderBottom:'1px solid #2A3858', marginBottom:28 }}>
+      {/* welcome banner — shown to new users who haven't set a company yet */}
+      {loaded && !settings.company_name && (
+        <div style={{ background:'rgba(91,99,235,0.1)', border:'1px solid #5B63EB', borderRadius:12,
+          padding:'16px 20px', marginBottom:24, display:'flex', gap:14, alignItems:'flex-start' }}>
+          <span style={{ fontSize:24, flexShrink:0, lineHeight:1 }}>👋</span>
+          <div>
+            <div style={{ color:'#FFFFFF', fontWeight:700, fontSize:15 }}>Welcome to BrandMonitor</div>
+            <div style={{ color:'#B4B4B4', fontSize:13, marginTop:4, lineHeight:1.5 }}>
+              Set up your company and delivery time below to start receiving daily brand digests.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* tab bar — overflow-x scroll on mobile */}
+      <div style={{ display:'flex', borderBottom:'1px solid #2A3858', marginBottom:28,
+        overflowX:'auto', WebkitOverflowScrolling:'touch' }}>
         {TABS.map((t, i) => (
           <button key={t} onClick={() => setTab(i)} style={{
             background:'none', border:'none', cursor:'pointer',
@@ -895,6 +946,7 @@ export default function Settings() {
             color: tab === i ? '#FFFFFF' : '#6B7A99',
             borderBottom: tab === i ? '2px solid #5B63EB' : '2px solid transparent',
             marginBottom:-1, transition:'color 0.15s',
+            flexShrink:0, whiteSpace:'nowrap',
           }}>
             {t}
           </button>
@@ -908,17 +960,49 @@ export default function Settings() {
 
       {/* save — hidden on Schedule tab which has its own save+activate */}
       {tab !== 4 && (
-        <div style={{ marginTop:20, display:'flex', alignItems:'center', gap:14 }}>
+        <div style={{ marginTop:20, display:'flex', alignItems:'center', gap:14, flexWrap:'wrap' }}>
           <button onClick={handleSave} disabled={saving} style={{
-            background:'linear-gradient(135deg,#5B63EB,#E91E8C)', color:'#fff',
-            border:'none', borderRadius:8, padding:'11px 28px',
+            background: saving ? '#2A3858' : 'linear-gradient(135deg,#5B63EB,#E91E8C)',
+            color:'#fff', border:'none', borderRadius:8, padding:'11px 28px',
             fontWeight:700, cursor: saving ? 'not-allowed' : 'pointer', fontSize:14,
+            display:'flex', alignItems:'center', gap:8,
           }}>
-            {saving ? 'Saving…' : 'Save Changes'}
+            {saving ? (
+              <>
+                Saving…
+                <span style={{
+                  display:'inline-block', width:12, height:12,
+                  border:'2px solid rgba(255,255,255,0.6)', borderTopColor:'transparent',
+                  borderRadius:'50%', animation:'spin 0.6s linear infinite',
+                }} />
+              </>
+            ) : 'Save Changes'}
           </button>
-          {saved && <span style={{ color:'#22c55e', fontSize:13 }}>Saved ✓</span>}
+          {saveErr && <span style={{ color:'#ef4444', fontSize:13 }}>✗ {saveErr}</span>}
         </div>
       )}
+
+      {/* toast notification — fixed bottom-right, auto-dismiss after 3s */}
+      {saved && (
+        <div style={{
+          position:'fixed', bottom:24, right:24,
+          background:'#22c55e', color:'#fff',
+          padding:'12px 20px', borderRadius:8,
+          fontSize:14, fontWeight:600,
+          zIndex:1000, animation:'fadeInUp 0.3s ease',
+          boxShadow:'0 4px 12px rgba(0,0,0,0.3)',
+        }}>
+          Settings saved ✓
+        </div>
+      )}
+
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes fadeInUp {
+          from { opacity: 0; transform: translateY(12px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
     </div>
   );
 }
