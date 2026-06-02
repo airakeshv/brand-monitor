@@ -20,6 +20,22 @@ function fmtDate(iso) {
   } catch { return iso; }
 }
 
+// format ISO date string "YYYY-MM-DD" as "2 Jun 2026" without timezone shifts
+function fmtDigestDate(isoDate) {
+  try {
+    const [y, m, d] = isoDate.split('-').map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+  } catch { return isoDate; }
+}
+
+// prefer server-computed digest.date + digest.timezone_label over raw created_at
+function fmtRowTime(row, digest) {
+  if (digest?.date && digest?.timezone_label) {
+    return `${fmtDigestDate(digest.date)} · ${digest.timezone_label}`;
+  }
+  return fmtDate(row.created_at);
+}
+
 // single digest row in the list
 function DigestRow({ row, onSelect, isSelected }) {
   // digest is pre-parsed by the API; fall back to row.company for old records
@@ -45,7 +61,7 @@ function DigestRow({ row, onSelect, isSelected }) {
           {crisis && <span style={{ marginLeft: 8, color: '#ef4444', fontSize: 11, fontWeight: 700 }}>⚠ CRISIS</span>}
         </div>
         <div style={{ color: '#6B7A99', fontSize: 12, marginTop: 3 }}>
-          {fmtDate(row.created_at)} · {digest?.model_used || row.model_used || ''}
+          {fmtRowTime(row, digest)} · {digest?.model_used || row.model_used || ''}
         </div>
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>

@@ -1,3 +1,4 @@
+import { format } from 'date-fns-tz';
 import { searchAll } from './searchService.js';
 import { applyNoiseFilter } from './noiseFilter.js';
 import { buildDigestPrompt } from './digestPrompt.js';
@@ -96,6 +97,8 @@ export async function runDigest(company, settings = {}, onProgress = null, works
   let digest = parseAndValidate(text, model_used);
   digest = normaliseSections(digest);
   digest.timezone_label = buildTimezoneLabel(settings);
+  // override LLM-supplied date with server-side truth in the user's timezone
+  digest.date = format(new Date(), 'yyyy-MM-dd', { timeZone: settings.timezone || 'Asia/Kolkata' });
 
   const { lastInsertRowid } = saveDigest({
     company,
