@@ -163,3 +163,14 @@ A feature is done when:
 2. No console.log with sensitive data
 3. Error handling present
 4. Tested with at least one real company name (e.g. "Tata Motors")
+5. Changes committed and pushed to GitHub (`git push origin main`)
+
+## Git Workflow — Run After Every Task
+```
+git add <changed files>          # stage only relevant files (never git add -A)
+git commit -m "type: short why"  # feat / fix / chore
+git push origin main             # always push — Vercel and Railway auto-deploy from main
+```
+- Commit message format: `fix: what was broken and why` or `feat: what was added`
+- Always update task.md status before committing
+- Never commit: .env, *.log, node_modules, pnpm-lock.yaml
