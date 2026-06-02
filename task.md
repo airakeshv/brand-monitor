@@ -1,5 +1,5 @@
 # Brand Intelligence Monitor — Task Tracker
-# Last updated: 2026-06-02
+# Last updated: 2026-06-02 (gap analysis added)
 
 ## Project Summary
 Brand monitoring app that searches news, social media, and reviews for a company name,
@@ -72,9 +72,40 @@ generates an AI digest, and delivers it via email + WhatsApp + Slack on a daily 
 
 ---
 
-## Pending / Next Up
-- [x] Fix: digest.date off by one day in email — now overridden server-side using user's IANA timezone (2026-06-02)
-- [x] Fix: History list shows wrong time (UTC created_at) — now shows digest.date + digest.timezone_label instead (2026-06-02)
+## Recent Fixes
+- [x] Fix: digest.date off by one day in email — server-side override using IANA timezone (2026-06-02)
+- [x] Fix: History list shows wrong time — now uses digest.date + digest.timezone_label (2026-06-02)
+
+---
+
+## NOT YET BUILT — Gaps vs CLAUDE.md Spec
+
+### Missing Backend Services (files don't exist)
+- [ ] `services/reviewService.js` — scrape/search Trustpilot, Google Reviews, Glassdoor for company reviews; populate `reviews[]` in DigestSchema with real data (currently LLM-guessed)
+- [ ] `services/aiVisibilityService.js` — query ChatGPT + Perplexity to check if company appears in AI answers; populate `ai_visibility[]` in DigestSchema
+- [ ] `tests/e2e.js` — end-to-end test: run digest for "Tata Motors", assert all schema fields present, assert delivery logs created
+
+### DigestSchema Fields Not Properly Populated
+- [ ] `reviews[]` — no real review scraping; depends on LLM inference from search results. Needs `reviewService.js`
+- [ ] `ai_visibility[]` — always empty; needs `aiVisibilityService.js` + ChatGPT/Perplexity API keys
+- [ ] `sov` (Share of Voice) — `company_pct` always 0; needs competitor search results to compute real SOV
+- [ ] `sparkline[7]` — always `[0,0,0,0,0,0,0]`; needs 7-day digest history lookup to compute daily sentiment scores
+
+### Settings Schema Fields Not Wired Up
+- [ ] `sources_enabled` — settings UI has no toggle per source; all sources always run
+- [ ] `pause_from` / `pause_to` — pause scheduling window stored in DB but cronManager doesn't check it before firing
+- [ ] `fallback_model` — setting exists but llmRouter doesn't auto-retry with fallback on primary LLM failure
+- [ ] `dev_webhook` — stored in settings but no code sends test payload to it
+- [ ] `competitor_names` in search — settings accepts competitor names but searchService doesn't search for them to populate `competitor_signals[]`
+
+### Other Missing Integrations
+- [ ] Reddit search via snoowrap — mentioned in CLAUDE.md API integrations, no snoowrap usage anywhere in codebase
+- [ ] Claude Haiku 4.5 crisis spike detection — mentioned as "crisis spike detection only" but llmRouter just uses the same model for everything; no Haiku-specific crisis check
+- [ ] Digest language support — `digest_language` setting exists but prompt doesn't enforce non-English output
+
+### v1.1 Roadmap (not urgent)
+- [ ] PostgreSQL migration (replace SQLite for multi-user scale)
+- [ ] Multi-user onboarding flow (currently single-user magic link only)
 
 ---
 
