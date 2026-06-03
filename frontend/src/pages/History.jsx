@@ -16,15 +16,15 @@ function fmtDate(iso) {
   try {
     const s = iso.replace(' ', 'T');
     const utc = (s.includes('Z') || s.includes('+')) ? s : s + 'Z';
-    return new Date(utc).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+    return new Date(utc).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
   } catch { return iso; }
 }
 
-// format ISO date string "YYYY-MM-DD" as "2 Jun 2026" without timezone shifts
+// format ISO date string "YYYY-MM-DD" as "3 Jun 2026" / "Jun 3, 2026" in browser locale
 function fmtDigestDate(isoDate) {
   try {
     const [y, m, d] = isoDate.split('-').map(Number);
-    return new Date(y, m - 1, d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+    return new Date(y, m - 1, d).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
   } catch { return isoDate; }
 }
 
