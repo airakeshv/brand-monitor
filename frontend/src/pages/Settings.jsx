@@ -372,22 +372,43 @@ function LLMTab({ s, set, onSave, saving }) {
       {/* model selection — clicking immediately updates local state; Save Changes persists */}
       <div style={{ display:'flex', flexDirection:'column', gap:10, marginBottom:24 }}>
         {LLM_MODELS.map(m => {
-          const active = (s.llm_model||'gemini-2.5-flash') === m.value;
-          const isFree = m.value === 'gemini-2.5-flash';
+          const selected = (s.llm_model||'gemini-2.5-flash') === m.value;
+          const isFree   = m.value === 'gemini-2.5-flash';
+          // ACTIVE (green) only when: Gemini (always ready) OR selected + key is stored
+          const isActive = isFree ? selected : (selected && s.llm_api_key_set);
+          const isSelectedNoKey = selected && !isFree && !s.llm_api_key_set;
+
           return (
             <div key={m.value} onClick={() => set({...s, llm_model:m.value})} style={{
-              background: active ? 'rgba(91,99,235,0.15)' : '#0A0E27',
-              border: `1px solid ${active ? '#5B63EB' : '#2A3858'}`,
+              background: selected ? 'rgba(91,99,235,0.12)' : '#0A0E27',
+              border: `1px solid ${isActive ? '#22c55e' : selected ? '#5B63EB' : '#2A3858'}`,
               borderRadius:10, padding:'12px 16px', cursor:'pointer',
               display:'flex', justifyContent:'space-between', alignItems:'center',
+              opacity: selected ? 1 : 0.6,
+              transition: 'opacity 0.15s, border-color 0.15s',
             }}>
               <div>
                 <div style={{ color:'#FFFFFF', fontWeight:600, fontSize:14 }}>{m.label}</div>
                 <div style={{ color:'#6B7A99', fontSize:12, marginTop:2 }}>{m.note}</div>
               </div>
               <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-                {isFree && <span style={{ color:'#22c55e', fontSize:11, fontWeight:600 }}>FREE</span>}
-                {active && <span style={{ color:'#5B63EB', fontSize:11, fontWeight:700 }}>ACTIVE</span>}
+                {isFree && !selected && (
+                  <span style={{ color:'#22c55e', fontSize:11, fontWeight:600 }}>FREE</span>
+                )}
+                {isActive && (
+                  <span style={{
+                    background:'rgba(34,197,94,0.15)', color:'#22c55e',
+                    border:'1px solid rgba(34,197,94,0.4)',
+                    borderRadius:'999px', padding:'2px 10px', fontSize:11, fontWeight:700,
+                  }}>● ACTIVE</span>
+                )}
+                {isSelectedNoKey && (
+                  <span style={{
+                    background:'rgba(250,204,21,0.1)', color:'#facc15',
+                    border:'1px solid rgba(250,204,21,0.3)',
+                    borderRadius:'999px', padding:'2px 10px', fontSize:11, fontWeight:600,
+                  }}>Paste key below ↓</span>
+                )}
               </div>
             </div>
           );
