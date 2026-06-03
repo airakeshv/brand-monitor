@@ -103,6 +103,22 @@ generates an AI digest, and delivers it via email + WhatsApp + Slack on a daily 
 
 ---
 
+## PARTIALLY BUILT — Executive / Key Person Tracking
+
+| Layer | Status |
+|---|---|
+| Settings UI — add up to 5 executive names | ✅ Built |
+| Serper `/news` search per exec name | ✅ Built |
+| Results tagged `source_category:'executive'` sent to LLM | ✅ Built |
+| `DigestPreview` `ExecutiveMentionRow` component | ✅ Built |
+| LLM prompt schema includes `executive_mentions[]` | ❌ MISSING |
+
+**Gap:** `digestPrompt.js` does not include `executive_mentions` in the JSON schema it asks the LLM to return. Executive search results reach the LLM as `[EXECUTIVE]` tagged lines but the LLM has no instruction to output them into a dedicated section — they silently fall into `news` or get dropped.
+
+**Fix needed:** Add `executive_mentions` to the JSON schema in `digestPrompt.js` with a rule like: `"For [EXECUTIVE] tagged results: create an executive_mentions entry with person_name, title, source, url, sentiment, snippet"`.
+
+---
+
 ## NOT YET BUILT — Gaps vs CLAUDE.md Spec
 
 ### Missing Backend Services (files don't exist)
