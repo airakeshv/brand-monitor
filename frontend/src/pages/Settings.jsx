@@ -332,6 +332,10 @@ function SourcesTab({ s, set }) {
 
 /* ── LLM tab ── */
 function LLMTab({ s, set }) {
+  const [showKey, setShowKey] = useState(false);
+  const keyIsStored  = s.llm_api_key_set && (s.llm_api_key === '••••••••' || !s.llm_api_key);
+  const keyIsDirty   = s.llm_api_key && s.llm_api_key !== '••••••••';
+
   return (
     <div>
       <p style={{ color:'#B4B4B4', fontSize:13, marginBottom:20 }}>
@@ -356,10 +360,58 @@ function LLMTab({ s, set }) {
           );
         })}
       </div>
-      <Field label="API Key (encrypted at rest)" hint="Leave blank to use the built-in Gemini free tier. Clear the field to remove a stored key.">
-        <TInput type="password" value={s.llm_api_key||''} onChange={v=>set({...s,llm_api_key:v})} placeholder="Paste your API key" />
-        {s.llm_api_key_set && (s.llm_api_key === '••••••••' || !s.llm_api_key) && (
-          <div style={{ marginTop:5, color:'#22c55e', fontSize:12 }}>Key stored securely ✓ — paste a new key to replace it</div>
+
+      <Field label="API Key (encrypted at rest)" hint="Select a non-Gemini model above, then paste your API key here. It is AES-256 encrypted before storage.">
+        {keyIsStored ? (
+          /* key already stored — show replace UI */
+          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+            <div style={{
+              flex:1, background:'#0A0E27', border:'1px solid #2A3858',
+              borderRadius:8, padding:'10px 14px', color:'#22c55e', fontSize:13,
+            }}>
+              ✓ API key stored securely
+            </div>
+            <button
+              onClick={() => set({...s, llm_api_key: ''})}
+              style={{
+                background:'none', border:'1px solid #2A3858', color:'#B4B4B4',
+                borderRadius:6, padding:'8px 14px', fontSize:12, cursor:'pointer',
+              }}
+            >
+              Replace
+            </button>
+          </div>
+        ) : (
+          /* no key stored — show paste input with show/hide toggle */
+          <div style={{ position:'relative' }}>
+            <input
+              type={showKey ? 'text' : 'password'}
+              value={s.llm_api_key || ''}
+              onChange={e => set({...s, llm_api_key: e.target.value})}
+              placeholder="Paste your API key here"
+              style={{
+                ...inputStyle,
+                paddingRight: 48,
+                fontFamily: showKey ? 'monospace' : 'inherit',
+                fontSize: showKey ? 12 : 15,
+              }}
+            />
+            <button
+              onClick={() => setShowKey(v => !v)}
+              style={{
+                position:'absolute', right:10, top:'50%', transform:'translateY(-50%)',
+                background:'none', border:'none', color:'#6B7A99',
+                cursor:'pointer', fontSize:13, padding:4,
+              }}
+            >
+              {showKey ? 'Hide' : 'Show'}
+            </button>
+          </div>
+        )}
+        {keyIsDirty && (
+          <div style={{ marginTop:5, color:'#facc15', fontSize:12 }}>
+            ⚠ Unsaved key — click Save Settings below to store it
+          </div>
         )}
       </Field>
       <Field label="Fallback Model">
