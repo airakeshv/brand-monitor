@@ -108,6 +108,8 @@ export function initDB() {
   try { db.exec("ALTER TABLE settings ADD COLUMN companies TEXT DEFAULT '[]'"); } catch (_) {}
   try { db.exec("ALTER TABLE settings ADD COLUMN plan TEXT DEFAULT 'pro'"); } catch (_) {}
   try { db.exec('ALTER TABLE settings ADD COLUMN whatsapp_verified INTEGER DEFAULT 0'); } catch (_) {}
+  try { db.exec("ALTER TABLE settings ADD COLUMN discovered_executives TEXT DEFAULT '[]'"); } catch (_) {}
+  try { db.exec("ALTER TABLE settings ADD COLUMN executives_last_refreshed TEXT DEFAULT NULL"); } catch (_) {}
 
   // seed a single-user default row if none exists
   const row = db.prepare('SELECT id FROM settings WHERE id = 1').get();
@@ -148,7 +150,8 @@ function emptySettings(extras = {}) {
     pause_from: null, pause_to: null, email: '', whatsapp: '',
     slack_webhook: '', dev_webhook: '', crisis_sensitivity: 'medium',
     review_threshold: 3, sources_enabled: {}, companies: [], plan: 'pro',
-    news_lookback: '7d', whatsapp_verified: 0, ...extras,
+    news_lookback: '7d', whatsapp_verified: 0,
+    discovered_executives: [], executives_last_refreshed: null, ...extras,
   };
 }
 
@@ -164,10 +167,11 @@ export function getSettings(workspaceId) {
     exclude_keywords:  JSON.parse(row.exclude_keywords  || '[]'),
     exclude_domains:   JSON.parse(row.exclude_domains   || '[]'),
     sources_enabled:   JSON.parse(row.sources_enabled   || '{}'),
-    companies:         JSON.parse(row.companies         || '[]'),
-    plan:              row.plan || 'pro',
-    llm_api_key:       row.llm_api_key ? MASKED : '',
-    llm_api_key_set:   !!row.llm_api_key,
+    companies:              JSON.parse(row.companies              || '[]'),
+    discovered_executives:  JSON.parse(row.discovered_executives  || '[]'),
+    plan:                   row.plan || 'pro',
+    llm_api_key:            row.llm_api_key ? MASKED : '',
+    llm_api_key_set:        !!row.llm_api_key,
   };
 }
 
@@ -183,15 +187,16 @@ export function getSettingsInternal(workspaceId) {
     exclude_keywords: JSON.parse(row.exclude_keywords  || '[]'),
     exclude_domains:  JSON.parse(row.exclude_domains   || '[]'),
     sources_enabled:  JSON.parse(row.sources_enabled   || '{}'),
-    companies:        JSON.parse(row.companies         || '[]'),
-    plan:             row.plan || 'pro',
-    llm_api_key:      decrypt(row.llm_api_key),
+    companies:             JSON.parse(row.companies              || '[]'),
+    discovered_executives: JSON.parse(row.discovered_executives  || '[]'),
+    plan:                  row.plan || 'pro',
+    llm_api_key:           decrypt(row.llm_api_key),
   };
 }
 
 // update workspace settings (partial update supported); AES-256 encrypts llm_api_key
 export function saveSettings(updates, workspaceId) {
-  const arrayFields  = ['competitor_names', 'executive_names', 'include_keywords', 'exclude_keywords', 'exclude_domains', 'companies'];
+  const arrayFields  = ['competitor_names', 'executive_names', 'include_keywords', 'exclude_keywords', 'exclude_domains', 'companies', 'discovered_executives'];
   const objectFields = ['sources_enabled'];
 
   const serialised = {};

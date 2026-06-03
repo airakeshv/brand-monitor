@@ -241,7 +241,7 @@ function CompanyTab({ s, set }) {
 
       <Field
         label="Key People — CEO, Founder, MD"
-        hint="Auto-discovered from your company name. Click Refresh to update. You can also add names manually. Max 5 tracked per digest."
+        hint="Auto-discovered from all your companies. Click Auto-Discover to refresh. You can also add names manually."
       >
         {/* auto-discovered list */}
         {(s.discovered_executives||[]).length > 0 && (
@@ -256,7 +256,7 @@ function CompanyTab({ s, set }) {
                   border:'1px solid rgba(233,30,140,0.3)', borderRadius:'999px',
                   padding:'3px 10px', fontSize:12, fontWeight:600,
                 }}>
-                  👤 {e.name} <span style={{color:'#6B7A99',fontWeight:400}}>· {e.role}</span>
+                  👤 {e.name} <span style={{color:'#6B7A99',fontWeight:400}}>· {e.role}{e.company ? ` (${e.company})` : ''}</span>
                 </span>
               ))}
             </div>

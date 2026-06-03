@@ -380,27 +380,37 @@ router.get('/schedule/history', (req, res) => {
   }
 });
 
-// discover C-level executives for the workspace company — Serper + LLM; saves to settings
+// discover C-level executives for ALL companies in the workspace — Serper + LLM; saves to settings
 router.post('/discover-executives', async (req, res) => {
   try {
-    const settings = getSettingsInternal(req.workspaceId);
-    const company  = settings.company_name;
-    if (!company) return res.status(400).json({ error: 'No company name set in settings' });
+    const settings  = getSettingsInternal(req.workspaceId);
+    const companies = (settings.companies?.length > 0)
+      ? settings.companies.filter(Boolean)
+      : (settings.company_name ? [settings.company_name] : []);
+    if (companies.length === 0) return res.status(400).json({ error: 'No companies set in settings' });
 
-    const executives = await discoverExecutives(company, settings);
+    // discover executives for each company in parallel (max 3 concurrent)
+    const allDiscovered = [];
+    for (let i = 0; i < companies.length; i += 3) {
+      const batch   = companies.slice(i, i + 3);
+      const results = await Promise.all(batch.map(c => discoverExecutives(c, settings)));
+      results.forEach((execs, idx) => {
+        execs.forEach(e => allDiscovered.push({ ...e, company: batch[idx] }));
+      });
+    }
 
-    // merge new names into existing executive_names (deduplicated)
-    const existing = (settings.executive_names || []);
-    const newNames  = executives.map(e => e.name);
-    const merged    = [...new Set([...existing, ...newNames])];
+    // merge all discovered names into executive_names (deduplicated by name)
+    const existing  = (settings.executive_names || []);
+    const newNames  = [...new Set(allDiscovered.map(e => e.name))];
+    const merged    = [...new Set([...existing, ...newNames])].slice(0, 10);
 
     saveSettings({
-      discovered_executives:       executives,
-      executives_last_refreshed:   new Date().toISOString(),
-      executive_names:             merged,
+      discovered_executives:     allDiscovered,
+      executives_last_refreshed: new Date().toISOString(),
+      executive_names:           merged,
     }, req.workspaceId);
 
-    res.json({ executives, executive_names: merged });
+    res.json({ executives: allDiscovered, executive_names: merged });
   } catch (err) {
     console.error('Executive discovery error:', err.message);
     res.status(500).json({ error: err.message });

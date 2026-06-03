@@ -207,19 +207,26 @@ async function runExecutiveDiscoveryForAll() {
   const rows = db.prepare('SELECT workspace_id FROM settings WHERE company_name IS NOT NULL').all();
   for (const row of rows) {
     try {
-      const settings   = getSettingsInternal(row.workspace_id);
-      if (!settings.company_name) continue;
-      const executives = await discoverExecutives(settings.company_name, settings);
-      if (executives.length === 0) continue;
-      const existing   = settings.executive_names || [];
-      const newNames   = executives.map(e => e.name);
-      const merged     = [...new Set([...existing, ...newNames])];
+      const settings  = getSettingsInternal(row.workspace_id);
+      const companies = (settings.companies?.length > 0)
+        ? settings.companies.filter(Boolean)
+        : (settings.company_name ? [settings.company_name] : []);
+      if (companies.length === 0) continue;
+      const allDiscovered = [];
+      for (const company of companies) {
+        const execs = await discoverExecutives(company, settings);
+        execs.forEach(e => allDiscovered.push({ ...e, company }));
+      }
+      if (allDiscovered.length === 0) continue;
+      const existing = settings.executive_names || [];
+      const newNames = [...new Set(allDiscovered.map(e => e.name))];
+      const merged   = [...new Set([...existing, ...newNames])].slice(0, 10);
       saveSettings({
-        discovered_executives:     executives,
+        discovered_executives:     allDiscovered,
         executives_last_refreshed: new Date().toISOString(),
         executive_names:           merged,
       }, row.workspace_id);
-      console.log(`[exec-discovery] ws ${row.workspace_id}: found ${executives.length} executives`);
+      console.log(`[exec-discovery] ws ${row.workspace_id}: found ${allDiscovered.length} executives across ${companies.length} companies`);
     } catch (err) {
       console.error(`[exec-discovery] failed for ws ${row.workspace_id}:`, err.message);
     }
