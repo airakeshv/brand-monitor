@@ -9,7 +9,13 @@ export function buildDigestPrompt(company, results, settings = {}) {
 
   const resultsText = results
     .slice(0, 60)
-    .map(r => `[${r.source_category?.toUpperCase() || 'NEWS'}] ${r.title || ''} — ${r.snippet || ''} (${r.link || r.url || ''})`)
+    .map(r => {
+      const cat = r.source_category?.toUpperCase() || 'NEWS';
+      const tag = (cat === 'EXECUTIVE' && r.person_badge)
+        ? `[EXECUTIVE: ${r.person_badge}]`
+        : `[${cat}]`;
+      return `${tag} ${r.title || ''} — ${r.snippet || ''} (${r.link || r.url || ''})`;
+    })
     .join('\n');
 
   return `You are a brand intelligence analyst. Analyse the following search results about "${company}" and return a JSON digest.
@@ -30,6 +36,7 @@ Return ONLY valid JSON matching this exact schema — no markdown, no explanatio
   "news": [{"title": "", "source": "", "url": "", "sentiment": "positive|neutral|negative|mixed", "emotion": "", "snippet": ""}],
   "social": [{"title": "", "source": "", "url": "", "sentiment": "", "snippet": ""}],
   "reviews": [{"platform": "", "rating": null, "excerpt": "", "urgency": "CRITICAL|HIGH|WATCH", "draft_response": ""}],
+  "executive_mentions": [{"person_name": "", "role": "", "title": "", "source": "", "url": "", "sentiment": "", "snippet": ""}],
   "ai_visibility": [],
   "competitor_signals": [{"company": "", "signal_type": "", "detail": ""}],
   "corporate_events": [{"type": "", "headline": "", "implication": ""}],
@@ -47,5 +54,6 @@ Rules:
 - Extract top 5–8 keywords from all results combined
 - For [REVIEW] tagged results: always create a review entry — use the snippet as excerpt, set platform from source name, infer urgency from tone (negative/complaint = CRITICAL, concern = HIGH, positive/neutral = WATCH), set rating to null if not stated, write a draft_response
 - draft_response for reviews must be under 80 words, professional and empathetic
+- For [EXECUTIVE: Name] tagged results: create an executive_mentions entry — set person_name from the name in the tag, infer role from context (CEO/MD/Founder etc.), fill title/source/url/sentiment/snippet from the result. If no [EXECUTIVE] results exist, return executive_mentions as []
 - Return ONLY the JSON object`;
 }

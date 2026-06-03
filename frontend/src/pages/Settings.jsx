@@ -121,6 +121,58 @@ function Toggle({ checked, onChange, label }) {
 }
 
 /* ── Company tab ── */
+// auto-discover executives button — calls /api/discover-executives and merges result into settings
+function ExecDiscoverButton({ s, set, activeWorkspaceId, API }) {
+  const [loading, setLoading] = useState(false);
+  const [msg,     setMsg]     = useState('');
+
+  const handleDiscover = async () => {
+    if (!s.company_name) { setMsg('Set a company name first'); return; }
+    setLoading(true); setMsg('');
+    try {
+      const res = await fetch(`${API}/api/discover-executives`, {
+        method:  'POST',
+        headers: {
+          'Content-Type':   'application/json',
+          'Authorization':  'Bearer ' + localStorage.getItem('bm_token'),
+          'X-Workspace-Id': String(activeWorkspaceId || ''),
+        },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Discovery failed');
+      set(prev => ({
+        ...prev,
+        discovered_executives:     data.executives,
+        executives_last_refreshed: new Date().toISOString(),
+        executive_names:           data.executive_names,
+      }));
+      setMsg(`Found ${data.executives.length} executive${data.executives.length !== 1 ? 's' : ''}`);
+    } catch (err) {
+      setMsg(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+      <button
+        onClick={handleDiscover}
+        disabled={loading}
+        style={{
+          background: loading ? '#2A3858' : 'linear-gradient(135deg,#5B63EB,#E91E8C)',
+          color:'#fff', border:'none', borderRadius:6,
+          padding:'6px 14px', fontSize:12, fontWeight:700,
+          cursor: loading ? 'not-allowed' : 'pointer',
+        }}
+      >
+        {loading ? 'Discovering…' : '✦ Auto-Discover'}
+      </button>
+      {msg && <span style={{ fontSize:11, color: msg.startsWith('Found') ? '#22c55e' : '#ef4444' }}>{msg}</span>}
+    </div>
+  );
+}
+
 function CompanyTab({ s, set }) {
   const isPro = (s.plan || 'pro') !== 'free';
   const MAX   = isPro ? 5 : 1;
@@ -187,19 +239,42 @@ function CompanyTab({ s, set }) {
       </Field>
 
       <Field
-        label="Key People — CEO, founder, spokesperson"
-        hint="Mentions of these people are searched separately and tagged in your digest. Separate names with commas. Max 5 names."
+        label="Key People — CEO, Founder, MD"
+        hint="Auto-discovered from your company name. Click Refresh to update. You can also add names manually. Max 5 tracked per digest."
       >
+        {/* auto-discovered list */}
+        {(s.discovered_executives||[]).length > 0 && (
+          <div style={{ marginBottom:10 }}>
+            <div style={{ color:'#6B7A99', fontSize:11, marginBottom:6 }}>
+              Auto-discovered{s.executives_last_refreshed ? ` · ${new Date(s.executives_last_refreshed).toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'})}` : ''}
+            </div>
+            <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+              {(s.discovered_executives||[]).map((e,i) => (
+                <span key={i} style={{
+                  background:'rgba(233,30,140,0.1)', color:'#E91E8C',
+                  border:'1px solid rgba(233,30,140,0.3)', borderRadius:'999px',
+                  padding:'3px 10px', fontSize:12, fontWeight:600,
+                }}>
+                  👤 {e.name} <span style={{color:'#6B7A99',fontWeight:400}}>· {e.role}</span>
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+        {/* manual override */}
         <TagInput
           value={s.executive_names||[]}
           onChange={v => set({...s, executive_names: v.slice(0, 5)})}
-          placeholder="e.g. Mukesh Ambani, Nita Ambani"
+          placeholder="Add names manually or click Auto-Discover"
         />
-        {(s.executive_names||[]).length > 0 && (
-          <div style={{ marginTop:6, color:'#6B7A99', fontSize:11 }}>
-            Tracking {(s.executive_names||[]).length} {(s.executive_names||[]).length === 1 ? 'person' : 'people'} · uses ~{(s.executive_names||[]).length} extra Serper credits per digest
-          </div>
-        )}
+        <div style={{ display:'flex', alignItems:'center', gap:12, marginTop:8 }}>
+          <ExecDiscoverButton s={s} set={set} activeWorkspaceId={activeWorkspaceId} API={API} />
+          {(s.executive_names||[]).length > 0 && (
+            <span style={{ color:'#6B7A99', fontSize:11 }}>
+              Tracking {(s.executive_names||[]).length} {(s.executive_names||[]).length===1?'person':'people'} · ~{(s.executive_names||[]).length} extra Serper credits/digest
+            </span>
+          )}
+        </div>
       </Field>
 
       <Field label="Competitor Names (comma-separated)">

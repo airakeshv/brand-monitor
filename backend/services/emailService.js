@@ -89,6 +89,16 @@ function buildHtml(digest) {
       </td>
     </tr>`).join('');
 
+  const execRows = (digest.executive_mentions || []).filter(e => e.title).map(e => `
+    <tr>
+      <td style="padding:10px 0;border-bottom:1px solid #2A3858">
+        <span style="background:rgba(233,30,140,0.15);color:#E91E8C;border:1px solid rgba(233,30,140,0.35);border-radius:999px;padding:2px 10px;font-size:11px;font-weight:700">👤 ${e.person_name||''}${e.role ? ' · ' + e.role : ''}</span>
+        ${e.sentiment ? `<span style="margin-left:8px;background:${sentimentColor(e.sentiment)};color:#0A0E27;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:600">${e.sentiment}</span>` : ''}
+        <div style="margin-top:6px"><a href="${e.url||'#'}" style="color:#FFFFFF;font-weight:600;text-decoration:none">${e.title||''}</a></div>
+        <div style="color:#B4B4B4;font-size:13px;margin-top:4px">${e.snippet||''}</div>
+      </td>
+    </tr>`).join('');
+
   const reviewRows = (digest.reviews || []).map(r => `
     <tr>
       <td style="padding:10px 0;border-bottom:1px solid #2A3858;border-left:3px solid ${urgencyColor(r.urgency)};padding-left:12px">
@@ -169,6 +179,10 @@ function buildHtml(digest) {
           <!-- News -->
           ${newsRows ? `<div style="color:#E91E8C;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:8px">News Highlights</div>
           <table width="100%" cellpadding="0" cellspacing="0">${newsRows}</table>` : ''}
+
+          <!-- Key People -->
+          ${execRows ? `<div style="color:#E91E8C;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin:20px 0 8px">Key People</div>
+          <table width="100%" cellpadding="0" cellspacing="0">${execRows}</table>` : ''}
 
           <!-- Social -->
           ${socialRows ? `<div style="color:#E91E8C;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin:20px 0 8px">Social Mentions</div>

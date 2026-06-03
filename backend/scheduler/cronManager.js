@@ -3,6 +3,7 @@ import { CronExpressionParser } from 'cron-parser';
 import { fromZonedTime } from 'date-fns-tz';
 import { getDB, getSettingsInternal, saveSettings } from '../models/user.js';
 import { runDigest } from '../services/digestService.js';
+import { discoverExecutives } from '../services/executiveDiscoveryService.js';
 import { sendMultiCompanyDigestEmail } from '../services/emailService.js';
 import { sendWhatsAppDigest } from '../services/whatsappService.js';
 import { sendSlackDigest } from '../services/slackService.js';
@@ -198,6 +199,39 @@ export function rescheduleWorkspace(workspaceId, settings) {
 // stop all active schedules
 export function stopSchedule() {
   stopAllJobs();
+}
+
+// run executive discovery for all workspaces — called weekly + on first company setup
+async function runExecutiveDiscoveryForAll() {
+  const db   = getDB();
+  const rows = db.prepare('SELECT workspace_id FROM settings WHERE company_name IS NOT NULL').all();
+  for (const row of rows) {
+    try {
+      const settings   = getSettingsInternal(row.workspace_id);
+      if (!settings.company_name) continue;
+      const executives = await discoverExecutives(settings.company_name, settings);
+      if (executives.length === 0) continue;
+      const existing   = settings.executive_names || [];
+      const newNames   = executives.map(e => e.name);
+      const merged     = [...new Set([...existing, ...newNames])];
+      saveSettings({
+        discovered_executives:     executives,
+        executives_last_refreshed: new Date().toISOString(),
+        executive_names:           merged,
+      }, row.workspace_id);
+      console.log(`[exec-discovery] ws ${row.workspace_id}: found ${executives.length} executives`);
+    } catch (err) {
+      console.error(`[exec-discovery] failed for ws ${row.workspace_id}:`, err.message);
+    }
+  }
+}
+
+// weekly executive refresh — every Monday at 2:00 AM UTC
+let execWeeklyJob = null;
+export function startExecutiveDiscovery() {
+  if (execWeeklyJob) execWeeklyJob.stop();
+  execWeeklyJob = cron.schedule('0 2 * * 1', runExecutiveDiscoveryForAll, { timezone: 'UTC' });
+  console.log('[exec-discovery] Weekly refresh scheduled — Mondays 02:00 UTC');
 }
 
 // return current scheduler state for a specific workspace

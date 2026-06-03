@@ -12,6 +12,7 @@ import { getHistory, getDigestById } from '../models/digest.js';
 import { scheduleDigest, rescheduleWorkspace, stopSchedule, getScheduleStatus } from '../scheduler/cronManager.js';
 import { getDeliveryHistory } from '../models/deliveryLog.js';
 import { generateMagicToken, hashToken, signJWT, sendMagicLinkEmail } from '../services/authService.js';
+import { discoverExecutives } from '../services/executiveDiscoveryService.js';
 import { getWorkspaces, createWorkspace, deleteWorkspace } from '../models/workspace.js';
 
 const router = Router();
@@ -376,6 +377,33 @@ router.get('/schedule/history', (req, res) => {
     res.json(getDeliveryHistory(30, req.workspaceId));
   } catch (err) {
     res.status(500).json({ error: 'Failed to get delivery history' });
+  }
+});
+
+// discover C-level executives for the workspace company — Serper + LLM; saves to settings
+router.post('/discover-executives', async (req, res) => {
+  try {
+    const settings = getSettingsInternal(req.workspaceId);
+    const company  = settings.company_name;
+    if (!company) return res.status(400).json({ error: 'No company name set in settings' });
+
+    const executives = await discoverExecutives(company, settings);
+
+    // merge new names into existing executive_names (deduplicated)
+    const existing = (settings.executive_names || []);
+    const newNames  = executives.map(e => e.name);
+    const merged    = [...new Set([...existing, ...newNames])];
+
+    saveSettings({
+      discovered_executives:       executives,
+      executives_last_refreshed:   new Date().toISOString(),
+      executive_names:             merged,
+    }, req.workspaceId);
+
+    res.json({ executives, executive_names: merged });
+  } catch (err) {
+    console.error('Executive discovery error:', err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 

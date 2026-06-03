@@ -67,12 +67,14 @@ function NewsRow({ item }) {
   );
 }
 
-// executive mention row — person-name badge (pink) + source + sentiment + title + snippet
+// executive mention row — person_name + role badge (pink) + source + sentiment + title + snippet
 function ExecutiveMentionRow({ item }) {
+  const label = item.person_name || item.person || '';
+  const role  = item.role || '';
   return (
     <div style={{ padding: '10px 0', borderBottom: '1px solid #2A3858' }}>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
-        {item.person && (
+        {label && (
           <span style={{
             background: 'rgba(233,30,140,0.15)',
             color: '#E91E8C',
@@ -82,7 +84,7 @@ function ExecutiveMentionRow({ item }) {
             fontSize: 11,
             fontWeight: 700,
           }}>
-            👤 {item.person}
+            👤 {label}{role ? ` · ${role}` : ''}
           </span>
         )}
         {item.source && <SourceBadge source={item.source} />}

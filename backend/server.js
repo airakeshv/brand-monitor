@@ -15,7 +15,7 @@ import { initDigestTable } from './models/digest.js';
 import { initDeliveryLogTable } from './models/deliveryLog.js';
 import apiRouter from './routes/api.js';
 import { requireAuth } from './middleware/auth.js';
-import { scheduleDigest } from './scheduler/cronManager.js';
+import { scheduleDigest, startExecutiveDiscovery } from './scheduler/cronManager.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -58,4 +58,5 @@ app.listen(PORT, () => {
   console.log('Server timezone:', Intl.DateTimeFormat().resolvedOptions().timeZone);
   console.log('Scheduling in UTC for all users');
   scheduleDigest();
+  startExecutiveDiscovery();
 });
