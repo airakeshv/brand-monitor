@@ -122,7 +122,8 @@ function Toggle({ checked, onChange, label }) {
 
 /* ── Company tab ── */
 // auto-discover executives button — calls /api/discover-executives and merges result into settings
-function ExecDiscoverButton({ s, set, activeWorkspaceId, API }) {
+function ExecDiscoverButton({ s, set }) {
+  const { activeWorkspaceId } = useWorkspace();
   const [loading, setLoading] = useState(false);
   const [msg,     setMsg]     = useState('');
 
@@ -268,7 +269,7 @@ function CompanyTab({ s, set }) {
           placeholder="Add names manually or click Auto-Discover"
         />
         <div style={{ display:'flex', alignItems:'center', gap:12, marginTop:8 }}>
-          <ExecDiscoverButton s={s} set={set} activeWorkspaceId={activeWorkspaceId} API={API} />
+          <ExecDiscoverButton s={s} set={set} />
           {(s.executive_names||[]).length > 0 && (
             <span style={{ color:'#6B7A99', fontSize:11 }}>
               Tracking {(s.executive_names||[]).length} {(s.executive_names||[]).length===1?'person':'people'} · ~{(s.executive_names||[]).length} extra Serper credits/digest
