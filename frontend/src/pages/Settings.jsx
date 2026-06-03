@@ -331,7 +331,7 @@ function SourcesTab({ s, set }) {
 }
 
 /* ── LLM tab ── */
-function LLMTab({ s, set }) {
+function LLMTab({ s, set, onSave, saving }) {
   const [showKey, setShowKey] = useState(false);
   const keyIsStored  = s.llm_api_key_set && (s.llm_api_key === '••••••••' || !s.llm_api_key);
   const keyIsDirty   = s.llm_api_key && s.llm_api_key !== '••••••••';
@@ -409,8 +409,20 @@ function LLMTab({ s, set }) {
           </div>
         )}
         {keyIsDirty && (
-          <div style={{ marginTop:5, color:'#facc15', fontSize:12 }}>
-            ⚠ Unsaved key — click Save Settings below to store it
+          <div style={{ marginTop:10, display:'flex', alignItems:'center', gap:10 }}>
+            <button
+              onClick={onSave}
+              disabled={saving}
+              style={{
+                background: saving ? '#2A3858' : 'linear-gradient(135deg,#5B63EB,#E91E8C)',
+                color:'#fff', border:'none', borderRadius:8,
+                padding:'10px 20px', fontSize:14, fontWeight:700,
+                cursor: saving ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {saving ? 'Saving…' : '💾 Save API Key'}
+            </button>
+            <span style={{ color:'#6B7A99', fontSize:12 }}>Key will be AES-256 encrypted</span>
           </div>
         )}
       </Field>
@@ -1035,7 +1047,7 @@ export default function Settings() {
   const tabs = [
     <CompanyTab  key="c" s={settings} set={setSettings} />,
     <SourcesTab  key="s" s={settings} set={setSettings} />,
-    <LLMTab      key="l" s={settings} set={setSettings} />,
+    <LLMTab      key="l" s={settings} set={setSettings} onSave={handleSave} saving={saving} />,
     <DeliveryTab key="d" s={settings} set={setSettings} />,
     <ScheduleTab key="sc" s={settings} set={setSettings}
       onActivate={handleActivate} onStop={handleStop} schedMsg={schedMsg} />,
