@@ -38,8 +38,9 @@ function buildCompactMessage(digest) {
 
   // line 5: executive mention (omitted if no executives tracked)
   const exec     = digest.executive_mentions?.[0];
-  const execLine = exec
-    ? `👤 Executive: ${exec.person} — ${(exec.title || '').slice(0, 45)}${(exec.title || '').length > 45 ? '…' : ''}`
+  const execName = exec?.person_name || exec?.person || '';
+  const execLine = execName
+    ? `👤 Executive: ${execName} — ${(exec.title || '').slice(0, 45)}${(exec.title || '').length > 45 ? '…' : ''}`
     : null;
 
   // line 6: keywords
@@ -82,7 +83,7 @@ export async function sendWhatsAppDigest(digestOrArray, whatsappNumber) {
   if (!whatsappNumber) return { ok: false, error: 'No WhatsApp number configured' };
 
   const client = getTwilioClient();
-  if (!client) return { ok: false, error: 'Twilio credentials not configured' };
+  if (!client) return { ok: false, error: 'Twilio credentials not configured — add TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN to Railway env vars' };
 
   const from    = process.env.TWILIO_WHATSAPP_FROM || 'whatsapp:+14155238886';
   const to      = toWhatsAppAddr(whatsappNumber);

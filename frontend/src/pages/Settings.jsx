@@ -704,9 +704,21 @@ function ScheduleTab({ s, set, onActivate, onStop, schedMsg }) {
           const p = JSON.parse(line.slice(5).trim());
           if (p.error) { setRunState('error'); setRunMsg(p.error); return; }
           if (p.done) {
-            const ch = Object.entries(p.delivery || {}).filter(([,v]) => v?.ok).map(([k]) => k);
-            setRunState('done');
-            setRunMsg(ch.length ? `Sent via: ${ch.join(', ')} ✓` : 'Digest generated (no delivery channel configured).');
+            const delivery = p.delivery || {};
+            const okCh   = Object.entries(delivery).filter(([,v]) => v?.ok).map(([k]) => k);
+            const failCh = Object.entries(delivery).filter(([,v]) => v && !v.ok)
+              .map(([k,v]) => `${k} failed: ${v.error || 'unknown error'}`);
+            const hasChannels = Object.keys(delivery).length > 0;
+            const okMsg   = okCh.length   ? `Sent via: ${okCh.join(', ')} ✓` : '';
+            const failMsg = failCh.length ? failCh.join(' | ') : '';
+            setRunState(failCh.length && !okCh.length ? 'error' : 'done');
+            setRunMsg(
+              okMsg && failMsg ? `${okMsg} — ${failMsg}` :
+              okMsg  ? okMsg :
+              failMsg ? failMsg :
+              hasChannels ? 'Delivery failed — check Railway logs' :
+              'Digest generated (no delivery channel configured — add email/WhatsApp in Delivery tab).'
+            );
           }
         }
       }
