@@ -1,5 +1,5 @@
 # Brand Intelligence Monitor — Task Tracker
-# Last updated: 2026-06-02 (gap analysis added)
+# Last updated: 2026-06-03
 
 ## Project Summary
 Brand monitoring app that searches news, social media, and reviews for a company name,
@@ -72,9 +72,34 @@ generates an AI digest, and delivers it via email + WhatsApp + Slack on a daily 
 
 ---
 
-## Recent Fixes
-- [x] Fix: digest.date off by one day in email — server-side override using IANA timezone (2026-06-02)
-- [x] Fix: History list shows wrong time — now uses digest.date + digest.timezone_label (2026-06-02)
+## Fixes Completed — 2026-06-03 (Today)
+
+### 1. Digest date off by one day in email (c057f98)
+- `digestService.js`: `digest.date` was LLM-generated (hallucinated UTC date)
+- Now overridden server-side using `format(new Date(), 'yyyy-MM-dd', { timeZone: userTz })`
+- Email header now correctly shows "3 Jun 2026 · 8:00 AM IST"
+
+### 2. History list showing wrong time — 3 fixes stacked (c057f98, dc76032, e9bfa81)
+- `History.jsx`: replaced `created_at` display with `digest.date + digest.timezone_label`
+- `fmtDate` bug: was checking `iso.includes('T')` to skip Z; API returns T-without-Z so browser parsed as local time → now checks for Z or + only, always appends Z for UTC
+- Hardcoded `'en-IN'` locale replaced with `undefined` (browser locale) → US users see "Jun 3, 2026", India sees "3 Jun 2026"
+
+### 3. Timezone display works per user location (e9bfa81)
+- Confirmed: `Settings.jsx` auto-detects `Intl.DateTimeFormat().resolvedOptions().timeZone` on first setup
+- `buildTimezoneLabel` maps IANA → abbreviation (ET/PT/CT/IST/GMT etc.)
+- Email, history preview, history list all show correct timezone label for any country
+
+### 4. Magic link auth loop fixed (02b4d52)
+- `Login.jsx`: if token in localStorage → redirect to `/dashboard` (was showing login form to logged-in users)
+- `api.js` (`authFetch`): any 401 response → clears token + redirects to `/login` (was silently failing)
+- `WorkspaceContext.jsx`: 401 on workspace load → clear token + redirect (was leaving user on blank broken app)
+
+### 5. Magic link email going to SPAM fixed (607a0dc)
+- Rebuilt HTML: white background, proper DOCTYPE, preheader text (dark HTML was matching phishing signatures)
+- Disabled SendGrid click + open tracking (tracking redirect URLs trigger spam filters)
+- Added `replyTo` header + proper plain-text fallback
+- Removed `console.log` of email addresses (security rule fix)
+- **User must also**: verify domain in SendGrid + set `SENDGRID_FROM` to own domain (not Gmail)
 
 ---
 
