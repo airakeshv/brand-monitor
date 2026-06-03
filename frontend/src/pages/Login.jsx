@@ -8,6 +8,11 @@ export default function Login() {
   const [error,     setError]     = useState('');
   const [countdown, setCountdown] = useState(0);
 
+  // redirect to dashboard if already logged in
+  useEffect(() => {
+    if (localStorage.getItem('bm_token')) window.location.href = '/dashboard';
+  }, []);
+
   // count down from 30 before showing the Resend button
   useEffect(() => {
     if (countdown <= 0) return;

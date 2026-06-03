@@ -20,7 +20,13 @@ export function WorkspaceProvider({ children }) {
       const res  = await fetch(`${API}/api/workspaces`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) { setLoading(false); return; }
+      if (!res.ok) {
+        if (res.status === 401) {
+          localStorage.removeItem('bm_token');
+          window.location.href = '/login';
+        }
+        setLoading(false); return;
+      }
 
       const list = await res.json();
       setWorkspaces(list);
