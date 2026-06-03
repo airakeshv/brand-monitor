@@ -103,19 +103,22 @@ generates an AI digest, and delivers it via email + WhatsApp + Slack on a daily 
 
 ---
 
-## PARTIALLY BUILT — Executive / Key Person Tracking
+## COMPLETED — Executive / Key Person Auto-Discovery (2026-06-03)
 
 | Layer | Status |
 |---|---|
-| Settings UI — add up to 5 executive names | ✅ Built |
-| Serper `/news` search per exec name | ✅ Built |
-| Results tagged `source_category:'executive'` sent to LLM | ✅ Built |
-| `DigestPreview` `ExecutiveMentionRow` component | ✅ Built |
-| LLM prompt schema includes `executive_mentions[]` | ❌ MISSING |
+| Settings UI — add up to 5 executive names manually | ✅ Built |
+| Serper `/news` search per exec name daily | ✅ Built |
+| Results tagged `[EXECUTIVE: Name]` sent to LLM | ✅ Built |
+| **NEW** `executiveDiscoveryService.js` — Serper + LLM auto-discovers C-level names | ✅ Built |
+| **NEW** `POST /api/discover-executives` endpoint | ✅ Built |
+| **NEW** Weekly Monday 02:00 UTC auto-refresh cron | ✅ Built |
+| **NEW** `executive_mentions[]` in LLM JSON schema + extraction rule | ✅ Built |
+| **NEW** "Key People" section in email (after News Highlights) | ✅ Built |
+| **NEW** `DigestPreview` shows `person_name + role` badge | ✅ Built |
+| **NEW** Settings page: auto-discovered list + "Auto-Discover" button | ✅ Built |
 
-**Gap:** `digestPrompt.js` does not include `executive_mentions` in the JSON schema it asks the LLM to return. Executive search results reach the LLM as `[EXECUTIVE]` tagged lines but the LLM has no instruction to output them into a dedicated section — they silently fall into `news` or get dropped.
-
-**Fix needed:** Add `executive_mentions` to the JSON schema in `digestPrompt.js` with a rule like: `"For [EXECUTIVE] tagged results: create an executive_mentions entry with person_name, title, source, url, sentiment, snippet"`.
+**How to use:** Go to Settings → Company tab → click **✦ Auto-Discover** button. System searches Serper for "Company CEO MD founder" and LLM extracts names + roles. Refreshes automatically every Monday.
 
 ---
 
