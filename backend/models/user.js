@@ -110,6 +110,7 @@ export function initDB() {
   try { db.exec('ALTER TABLE settings ADD COLUMN whatsapp_verified INTEGER DEFAULT 0'); } catch (_) {}
   try { db.exec("ALTER TABLE settings ADD COLUMN discovered_executives TEXT DEFAULT '[]'"); } catch (_) {}
   try { db.exec("ALTER TABLE settings ADD COLUMN executives_last_refreshed TEXT DEFAULT NULL"); } catch (_) {}
+  try { db.exec("ALTER TABLE settings ADD COLUMN fallback_api_key TEXT DEFAULT ''"); } catch (_) {}
 
   // seed a single-user default row if none exists
   const row = db.prepare('SELECT id FROM settings WHERE id = 1').get();
@@ -145,7 +146,8 @@ function emptySettings(extras = {}) {
     company_name: '', competitor_names: [], executive_names: [],
     include_keywords: [], exclude_keywords: [], exclude_domains: [],
     llm_model: 'gemini-2.5-flash', llm_api_key: '', llm_api_key_set: false,
-    fallback_model: 'gemini-2.5-flash', digest_language: 'English',
+    fallback_model: 'gemini-2.5-flash', fallback_api_key: '', fallback_api_key_set: false,
+    digest_language: 'English',
     timezone: 'Asia/Kolkata', delivery_time: '08:00', frequency: 'daily',
     pause_from: null, pause_to: null, email: '', whatsapp: '',
     slack_webhook: '', dev_webhook: '', crisis_sensitivity: 'medium',
@@ -172,6 +174,8 @@ export function getSettings(workspaceId) {
     plan:                   row.plan || 'pro',
     llm_api_key:            row.llm_api_key ? MASKED : '',
     llm_api_key_set:        !!row.llm_api_key,
+    fallback_api_key:       row.fallback_api_key ? MASKED : '',
+    fallback_api_key_set:   !!row.fallback_api_key,
   };
 }
 
@@ -191,6 +195,7 @@ export function getSettingsInternal(workspaceId) {
     discovered_executives: JSON.parse(row.discovered_executives  || '[]'),
     plan:                  row.plan || 'pro',
     llm_api_key:           decrypt(row.llm_api_key),
+    fallback_api_key:      decrypt(row.fallback_api_key),
   };
 }
 
@@ -201,10 +206,11 @@ export function saveSettings(updates, workspaceId) {
 
   const serialised = {};
   for (const [k, v] of Object.entries(updates)) {
-    if (k === 'llm_api_key_set') continue;  // read-only computed field — never store
-    if (k === 'workspace_id')    continue;  // never allow overwriting workspace ownership
-    if (k === 'id')              continue;  // never update the primary key
-    if (k === 'llm_api_key') {
+    if (k === 'llm_api_key_set')      continue;  // read-only computed field — never store
+    if (k === 'fallback_api_key_set') continue;  // read-only computed field — never store
+    if (k === 'workspace_id')         continue;  // never allow overwriting workspace ownership
+    if (k === 'id')                   continue;  // never update the primary key
+    if (k === 'llm_api_key' || k === 'fallback_api_key') {
       if (!v || v === MASKED) continue;     // masked sentinel or blank → keep existing
       serialised[k] = encrypt(v);
     } else if (arrayFields.includes(k) || objectFields.includes(k)) {

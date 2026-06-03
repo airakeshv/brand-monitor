@@ -82,9 +82,10 @@ export function buildBasicDigest(company, results = [], timezone_label = 'UTC') 
   return { text: JSON.stringify(digest), model_used: 'rule-based (LLM unavailable)' };
 }
 
-// route a prompt to the chosen LLM — waterfall: primary → OpenAI → Gemini → rule-based
+// route a prompt to the chosen LLM — waterfall: primary → user fallback → system Gemini → rule-based
+// fallbackModel/fallbackApiKey: user's chosen backup model + its key (from settings)
 // context = { company, results } is used only for the rule-based last resort
-export async function routeLLM(model, apiKey, prompt, context = {}) {
+export async function routeLLM(model, apiKey, prompt, context = {}, fallbackModel = null, fallbackApiKey = null) {
   let primaryErr;
 
   // step 1 — try primary model
@@ -106,23 +107,38 @@ export async function routeLLM(model, apiKey, prompt, context = {}) {
     console.error(`Primary model ${model} failed: ${err.message}`);
   }
 
-  // step 2 — fallback to OpenAI (if available and not already tried)
-  if (model !== 'gpt-4o-mini' && process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY !== 'add_later') {
-    try {
-      console.error('Falling back to OpenAI gpt-4o-mini');
-      return await callOpenAI(process.env.OPENAI_API_KEY, prompt);
-    } catch (err) {
-      console.error(`OpenAI fallback failed: ${err.message}`);
+  // step 2 — user's chosen backup model (with their backup key; Gemini backup is always free)
+  if (fallbackModel && fallbackModel !== model) {
+    const fbKey = fallbackModel === 'gemini-2.5-flash'
+      ? (fallbackApiKey || process.env.GEMINI_API_KEY)
+      : fallbackApiKey; // paid backup — only attempt if user supplied a key
+    if (fbKey) {
+      try {
+        console.error(`Falling back to user backup: ${fallbackModel}`);
+        switch (fallbackModel) {
+          case 'gemini-2.5-flash':
+            return await withRetry(() => callGemini(fbKey, prompt, true));
+          case 'gpt-4o-mini':
+            return await callOpenAI(fbKey, prompt);
+          case 'claude-sonnet-4-6':
+            return await callClaude(fbKey, prompt);
+          case 'perplexity-api':
+            return await callPerplexity(fbKey, prompt);
+        }
+      } catch (err) {
+        console.error(`Backup model ${fallbackModel} failed: ${err.message}`);
+      }
     }
   }
 
-  // step 3 — fallback to Gemini (if available and not already tried)
-  if (model !== 'gemini-2.5-flash' && process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'add_later') {
+  // step 3 — last resort: system Gemini (free tier, always available unless both above already tried it)
+  const alreadyTriedGemini = model === 'gemini-2.5-flash' || fallbackModel === 'gemini-2.5-flash';
+  if (!alreadyTriedGemini && process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'add_later') {
     try {
-      console.error('Falling back to Gemini');
+      console.error('Final fallback to system Gemini 2.5 Flash');
       return await withRetry(() => callGemini(process.env.GEMINI_API_KEY, prompt, true));
     } catch (err) {
-      console.error(`Gemini fallback failed: ${err.message}`);
+      console.error(`System Gemini fallback failed: ${err.message}`);
     }
   }
 
@@ -220,8 +236,10 @@ function fmtLocalTime(tz) {
 
 // build DigestSchema prompt from search results and call the configured LLM
 export async function generateDigest(company, searchResults, settings = {}) {
-  const model  = settings.llm_model   || 'gemini-2.5-flash';
-  const apiKey = settings.llm_api_key || '';
+  const model          = settings.llm_model      || 'gemini-2.5-flash';
+  const apiKey         = settings.llm_api_key    || '';
+  const fallbackModel  = settings.fallback_model  || 'gemini-2.5-flash';
+  const fallbackApiKey = settings.fallback_api_key || '';
   const lang   = settings.digest_language || 'English';
   const tz     = settings.timezone || 'Asia/Kolkata';
   const today          = new Date().toISOString().split('T')[0];
@@ -273,7 +291,7 @@ Rules:
 - crisis_flag.triggered = true if >30% of news is negative or there is a PR crisis
 - watch_out: one-sentence biggest risk, or null if nothing notable`;
 
-  const { text, model_used } = await routeLLM(model, apiKey, prompt, { company, results: searchResults, timezone_label });
+  const { text, model_used } = await routeLLM(model, apiKey, prompt, { company, results: searchResults, timezone_label }, fallbackModel, fallbackApiKey);
 
   // strip markdown code fences if LLM wraps output
   const cleaned = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();

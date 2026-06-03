@@ -330,139 +330,190 @@ function SourcesTab({ s, set }) {
   );
 }
 
-/* ── LLM tab ── */
-function LLMTab({ s, set, onSave, saving }) {
-  const [apiKey,   setApiKey]   = useState('');
-  const [showKey,  setShowKey]  = useState(false);
-  const [keySaved, setKeySaved] = useState(false);
-  const [keySaving, setKeySaving] = useState(false);
-  const { activeWorkspaceId }   = useWorkspace();
+/* ── model card grid — used in both Primary and Backup sections ── */
+function ModelCards({ selected, onSelect, keySet }) {
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:16 }}>
+      {LLM_MODELS.map(m => {
+        const isSelected = selected === m.value;
+        const isFree     = m.value === 'gemini-2.5-flash';
+        const isActive   = isFree ? isSelected : (isSelected && keySet);
+        const needsKey   = isSelected && !isFree && !keySet;
+        return (
+          <div key={m.value} onClick={() => onSelect(m.value)} style={{
+            background: isSelected ? 'rgba(91,99,235,0.12)' : '#0A0E27',
+            border: `1px solid ${isActive ? '#22c55e' : isSelected ? '#5B63EB' : '#2A3858'}`,
+            borderRadius:10, padding:'10px 14px', cursor:'pointer',
+            display:'flex', justifyContent:'space-between', alignItems:'center',
+            opacity: isSelected ? 1 : 0.6, transition:'opacity 0.15s, border-color 0.15s',
+          }}>
+            <div>
+              <div style={{ color:'#FFFFFF', fontWeight:600, fontSize:13 }}>{m.label}</div>
+              <div style={{ color:'#6B7A99', fontSize:11, marginTop:1 }}>{m.note}</div>
+            </div>
+            <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+              {isFree && !isSelected && <span style={{ color:'#22c55e', fontSize:11, fontWeight:600 }}>FREE</span>}
+              {isActive && (
+                <span style={{ background:'rgba(34,197,94,0.15)', color:'#22c55e',
+                  border:'1px solid rgba(34,197,94,0.4)', borderRadius:'999px',
+                  padding:'2px 8px', fontSize:11, fontWeight:700 }}>● ACTIVE</span>
+              )}
+              {needsKey && (
+                <span style={{ background:'rgba(250,204,21,0.1)', color:'#facc15',
+                  border:'1px solid rgba(250,204,21,0.3)', borderRadius:'999px',
+                  padding:'2px 8px', fontSize:11, fontWeight:600 }}>Paste key ↓</span>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
-  // save just the API key directly without full-form save
-  const handleSaveKey = async () => {
-    if (!apiKey.trim()) return;
-    setKeySaving(true);
-    try {
-      await fetch(`${API}/api/settings`, {
-        method: 'POST',
-        headers: {
-          'Content-Type':   'application/json',
-          'Authorization':  'Bearer ' + localStorage.getItem('bm_token'),
-          'X-Workspace-Id': String(activeWorkspaceId || ''),
-        },
-        body: JSON.stringify({ llm_api_key: apiKey.trim(), llm_model: s.llm_model }),
-      });
-      set({ ...s, llm_api_key_set: true, llm_api_key: '••••••••' });
-      setApiKey('');
-      setKeySaved(true);
-      setTimeout(() => setKeySaved(false), 3000);
-    } catch (err) {
-      console.error('Key save failed:', err.message);
-    } finally {
-      setKeySaving(false);
-    }
+/* ── encrypted key input row ── */
+function KeyInputRow({ label, hint, keySet, value, onChange, show, onToggleShow, onSave, saving, saved }) {
+  return (
+    <Field label={label} hint={keySet ? 'Key stored. Paste a new one to replace.' : hint}>
+      {keySet && <div style={{ color:'#22c55e', fontSize:13, marginBottom:8, fontWeight:600 }}>✓ Key stored securely</div>}
+      <div style={{ display:'flex', gap:8 }}>
+        <div style={{ position:'relative', flex:1 }}>
+          <input type={show ? 'text' : 'password'} value={value}
+            onChange={e => onChange(e.target.value)}
+            placeholder={keySet ? 'Paste new key to replace…' : 'Paste your API key here'}
+            style={{ ...inputStyle, paddingRight:52, boxSizing:'border-box' }} />
+          <button onClick={onToggleShow} style={{
+            position:'absolute', right:10, top:'50%', transform:'translateY(-50%)',
+            background:'none', border:'none', color:'#6B7A99', cursor:'pointer', fontSize:12, padding:4,
+          }}>{show ? 'Hide' : 'Show'}</button>
+        </div>
+        <button onClick={onSave} disabled={!value.trim() || saving} style={{
+          background: (!value.trim() || saving) ? '#2A3858' : 'linear-gradient(135deg,#5B63EB,#E91E8C)',
+          color:'#fff', border:'none', borderRadius:8, padding:'10px 18px',
+          fontSize:13, fontWeight:700, whiteSpace:'nowrap',
+          cursor: (!value.trim() || saving) ? 'not-allowed' : 'pointer',
+          opacity: !value.trim() ? 0.5 : 1,
+        }}>
+          {saving ? 'Saving…' : saved ? '✓ Saved' : 'Save Key'}
+        </button>
+      </div>
+    </Field>
+  );
+}
+
+/* ── LLM tab — PRIMARY + BACKUP model selection with independent API keys ── */
+function LLMTab({ s, set }) {
+  const [primaryKey,  setPrimaryKey]  = useState('');
+  const [showPrimKey, setShowPrimKey] = useState(false);
+  const [primSaved,   setPrimSaved]   = useState(false);
+  const [primSaving,  setPrimSaving]  = useState(false);
+  const [backupKey,   setBackupKey]   = useState('');
+  const [showBkpKey,  setShowBkpKey]  = useState(false);
+  const [bkpSaved,    setBkpSaved]    = useState(false);
+  const [bkpSaving,   setBkpSaving]   = useState(false);
+  const { activeWorkspaceId } = useWorkspace();
+
+  // post partial settings update without requiring a full form save
+  const postKey = async (body) => {
+    await fetch(`${API}/api/settings`, {
+      method: 'POST',
+      headers: {
+        'Content-Type':   'application/json',
+        'Authorization':  'Bearer ' + localStorage.getItem('bm_token'),
+        'X-Workspace-Id': String(activeWorkspaceId || ''),
+      },
+      body: JSON.stringify(body),
+    });
   };
+
+  const handleSavePrimaryKey = async () => {
+    if (!primaryKey.trim()) return;
+    setPrimSaving(true);
+    try {
+      await postKey({ llm_api_key: primaryKey.trim(), llm_model: s.llm_model });
+      set({ ...s, llm_api_key_set: true });
+      setPrimaryKey('');
+      setPrimSaved(true);
+      setTimeout(() => setPrimSaved(false), 3000);
+    } catch (err) { console.error('Primary key save failed:', err.message); }
+    finally { setPrimSaving(false); }
+  };
+
+  const handleSaveBackupKey = async () => {
+    if (!backupKey.trim()) return;
+    setBkpSaving(true);
+    try {
+      await postKey({ fallback_api_key: backupKey.trim(), fallback_model: s.fallback_model });
+      set({ ...s, fallback_api_key_set: true });
+      setBackupKey('');
+      setBkpSaved(true);
+      setTimeout(() => setBkpSaved(false), 3000);
+    } catch (err) { console.error('Backup key save failed:', err.message); }
+    finally { setBkpSaving(false); }
+  };
+
+  const sectionHeader = (label, color, bg, border, desc) => (
+    <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14,
+      paddingBottom:10, borderBottom:'1px solid #2A3858' }}>
+      <span style={{ background:bg, color, border:`1px solid ${border}`,
+        borderRadius:6, padding:'3px 10px', fontSize:11, fontWeight:700 }}>{label}</span>
+      <span style={{ color:'#B4B4B4', fontSize:13 }}>{desc}</span>
+    </div>
+  );
+
+  const primaryModel  = s.llm_model      || 'gemini-2.5-flash';
+  const backupModel   = s.fallback_model  || 'gemini-2.5-flash';
+  const primaryFree   = primaryModel  === 'gemini-2.5-flash';
+  const backupFree    = backupModel   === 'gemini-2.5-flash';
 
   return (
     <div>
-      <p style={{ color:'#B4B4B4', fontSize:13, marginBottom:20 }}>
-        Gemini 2.5 Flash is free — no key needed. Other models require your own API key.
+      <p style={{ color:'#B4B4B4', fontSize:13, marginBottom:24 }}>
+        Gemini 2.5 Flash is the default — free, no key needed. Pick any other model as your Primary or Backup, then paste its API key below.
       </p>
 
-      {/* model selection — clicking immediately updates local state; Save Changes persists */}
-      <div style={{ display:'flex', flexDirection:'column', gap:10, marginBottom:24 }}>
-        {LLM_MODELS.map(m => {
-          const selected = (s.llm_model||'gemini-2.5-flash') === m.value;
-          const isFree   = m.value === 'gemini-2.5-flash';
-          // ACTIVE (green) only when: Gemini (always ready) OR selected + key is stored
-          const isActive = isFree ? selected : (selected && s.llm_api_key_set);
-          const isSelectedNoKey = selected && !isFree && !s.llm_api_key_set;
-
-          return (
-            <div key={m.value} onClick={() => set({...s, llm_model:m.value})} style={{
-              background: selected ? 'rgba(91,99,235,0.12)' : '#0A0E27',
-              border: `1px solid ${isActive ? '#22c55e' : selected ? '#5B63EB' : '#2A3858'}`,
-              borderRadius:10, padding:'12px 16px', cursor:'pointer',
-              display:'flex', justifyContent:'space-between', alignItems:'center',
-              opacity: selected ? 1 : 0.6,
-              transition: 'opacity 0.15s, border-color 0.15s',
-            }}>
-              <div>
-                <div style={{ color:'#FFFFFF', fontWeight:600, fontSize:14 }}>{m.label}</div>
-                <div style={{ color:'#6B7A99', fontSize:12, marginTop:2 }}>{m.note}</div>
-              </div>
-              <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-                {isFree && !selected && (
-                  <span style={{ color:'#22c55e', fontSize:11, fontWeight:600 }}>FREE</span>
-                )}
-                {isActive && (
-                  <span style={{
-                    background:'rgba(34,197,94,0.15)', color:'#22c55e',
-                    border:'1px solid rgba(34,197,94,0.4)',
-                    borderRadius:'999px', padding:'2px 10px', fontSize:11, fontWeight:700,
-                  }}>● ACTIVE</span>
-                )}
-                {isSelectedNoKey && (
-                  <span style={{
-                    background:'rgba(250,204,21,0.1)', color:'#facc15',
-                    border:'1px solid rgba(250,204,21,0.3)',
-                    borderRadius:'999px', padding:'2px 10px', fontSize:11, fontWeight:600,
-                  }}>Paste key below ↓</span>
-                )}
-              </div>
-            </div>
-          );
-        })}
+      {/* ── PRIMARY MODEL ── */}
+      <div style={{ marginBottom:28 }}>
+        {sectionHeader('PRIMARY', '#5B63EB', 'rgba(91,99,235,0.15)', 'rgba(91,99,235,0.4)', 'Used for every digest')}
+        <ModelCards
+          selected={primaryModel}
+          onSelect={v => set({ ...s, llm_model: v })}
+          keySet={s.llm_api_key_set}
+        />
+        {primaryFree
+          ? <p style={{ color:'#22c55e', fontSize:12, margin:'0 0 8px' }}>✓ Gemini is free — no API key needed</p>
+          : <KeyInputRow
+              label="Primary API Key (encrypted at rest)"
+              hint="Paste your API key for the selected primary model."
+              keySet={s.llm_api_key_set}
+              value={primaryKey}   onChange={setPrimaryKey}
+              show={showPrimKey}   onToggleShow={() => setShowPrimKey(v => !v)}
+              onSave={handleSavePrimaryKey} saving={primSaving} saved={primSaved}
+            />
+        }
       </div>
 
-      {/* API key — always visible input, separate local state so it never fights with settings */}
-      <Field
-        label="API Key (encrypted at rest)"
-        hint={s.llm_api_key_set ? 'A key is stored. Paste a new one below to replace it.' : 'Paste your API key for the selected model. Not needed for Gemini.'}
-      >
-        {s.llm_api_key_set && (
-          <div style={{ color:'#22c55e', fontSize:13, marginBottom:8, fontWeight:600 }}>
-            ✓ Key stored securely
-          </div>
-        )}
-        <div style={{ display:'flex', gap:8 }}>
-          <div style={{ position:'relative', flex:1 }}>
-            <input
-              type={showKey ? 'text' : 'password'}
-              value={apiKey}
-              onChange={e => setApiKey(e.target.value)}
-              placeholder={s.llm_api_key_set ? 'Paste new key to replace…' : 'Paste your API key here'}
-              style={{ ...inputStyle, paddingRight:52, boxSizing:'border-box' }}
+      {/* ── BACKUP MODEL ── */}
+      <div style={{ marginBottom:24 }}>
+        {sectionHeader('BACKUP', '#E91E8C', 'rgba(233,30,140,0.1)', 'rgba(233,30,140,0.3)', 'Auto-used if primary fails')}
+        <ModelCards
+          selected={backupModel}
+          onSelect={v => set({ ...s, fallback_model: v })}
+          keySet={s.fallback_api_key_set}
+        />
+        {backupFree
+          ? <p style={{ color:'#22c55e', fontSize:12, margin:'0 0 8px' }}>✓ Gemini is free — no API key needed</p>
+          : <KeyInputRow
+              label="Backup API Key (encrypted at rest)"
+              hint="Paste your API key for the backup model."
+              keySet={s.fallback_api_key_set}
+              value={backupKey}    onChange={setBackupKey}
+              show={showBkpKey}    onToggleShow={() => setShowBkpKey(v => !v)}
+              onSave={handleSaveBackupKey} saving={bkpSaving} saved={bkpSaved}
             />
-            <button onClick={() => setShowKey(v => !v)} style={{
-              position:'absolute', right:10, top:'50%', transform:'translateY(-50%)',
-              background:'none', border:'none', color:'#6B7A99',
-              cursor:'pointer', fontSize:12, padding:4,
-            }}>
-              {showKey ? 'Hide' : 'Show'}
-            </button>
-          </div>
-          <button
-            onClick={handleSaveKey}
-            disabled={!apiKey.trim() || keySaving}
-            style={{
-              background: (!apiKey.trim() || keySaving) ? '#2A3858' : 'linear-gradient(135deg,#5B63EB,#E91E8C)',
-              color:'#fff', border:'none', borderRadius:8,
-              padding:'10px 18px', fontSize:13, fontWeight:700,
-              cursor: (!apiKey.trim() || keySaving) ? 'not-allowed' : 'pointer',
-              whiteSpace:'nowrap', opacity: !apiKey.trim() ? 0.5 : 1,
-            }}
-          >
-            {keySaving ? 'Saving…' : keySaved ? '✓ Saved' : 'Save Key'}
-          </button>
-        </div>
-      </Field>
+        }
+      </div>
 
-      <Field label="Fallback Model">
-        <TSelect value={s.fallback_model||'gemini-2.5-flash'} onChange={v=>set({...s,fallback_model:v})}>
-          {LLM_MODELS.map(m=><option key={m.value} value={m.value}>{m.label}</option>)}
-        </TSelect>
-      </Field>
       <Field label="Digest Language">
         <TSelect value={s.digest_language||'English'} onChange={v=>set({...s,digest_language:v})}>
           {['English','Hindi','Spanish','French','German','Portuguese'].map(l=>(
