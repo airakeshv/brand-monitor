@@ -11,11 +11,11 @@ function crisisColor(triggered) {
 }
 
 // format SQLite UTC timestamp for display in user's local timezone
-// SQLite datetime('now') → "YYYY-MM-DD HH:MM:SS" with no Z suffix;
-// without the Z the browser treats it as local time — appending Z forces UTC parse
+// always treat as UTC — append Z unless an explicit offset (+/-) is already present
 function fmtDate(iso) {
   try {
-    const utc = iso.includes('T') || iso.includes('+') ? iso : iso.replace(' ', 'T') + 'Z';
+    const s = iso.replace(' ', 'T');
+    const utc = (s.includes('Z') || s.includes('+')) ? s : s + 'Z';
     return new Date(utc).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
   } catch { return iso; }
 }
