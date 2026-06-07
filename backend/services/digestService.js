@@ -2,7 +2,7 @@ import { format } from 'date-fns-tz';
 import { searchAll } from './searchService.js';
 import { applyNoiseFilter } from './noiseFilter.js';
 import { buildDigestPrompt } from './digestPrompt.js';
-import { routeLLM } from './llmRouter.js';
+import { routeLLM, callGeminiWithSearch } from './llmRouter.js';
 import { parseAndValidate } from './digestValidator.js';
 import { saveDigest } from '../models/digest.js';
 
@@ -90,8 +90,19 @@ export async function runDigest(company, settings = {}, onProgress = null, works
   const filtered = applyNoiseFilter(raw, settings);
 
   onProgress?.(`Found ${filtered.length} results. Generating digest…`);
-  const prompt   = buildDigestPrompt(company, filtered, settings);
-  const { text, model_used } = await routeLLM(model, apiKey, prompt, { company, results: filtered });
+
+  let text, model_used;
+  if (filtered.length === 0) {
+    // Serper quota exhausted — search + generate via Gemini web search grounding
+    onProgress?.('Searching via Gemini web search (Serper quota exhausted)…');
+    const lang           = settings.digest_language || 'English';
+    const today          = format(new Date(), 'yyyy-MM-dd', { timeZone: settings.timezone || 'Asia/Kolkata' });
+    const timezone_label = buildTimezoneLabel(settings);
+    ({ text, model_used } = await callGeminiWithSearch(company, lang, today, timezone_label));
+  } else {
+    const prompt = buildDigestPrompt(company, filtered, settings);
+    ({ text, model_used } = await routeLLM(model, apiKey, prompt, { company, results: filtered }));
+  }
 
   onProgress?.('Validating digest…');
   let digest = parseAndValidate(text, model_used);

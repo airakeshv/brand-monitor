@@ -235,7 +235,7 @@ function fmtLocalTime(tz) {
 }
 
 // Gemini 2.5 Flash with Google Search grounding — fallback when Serper quota is exhausted
-async function callGeminiWithSearch(company, lang, today, timezone_label) {
+export async function callGeminiWithSearch(company, lang, today, timezone_label) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey || apiKey === 'add_later') throw new Error('Gemini API key not set');
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
