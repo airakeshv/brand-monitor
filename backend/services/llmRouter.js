@@ -234,6 +234,46 @@ function fmtLocalTime(tz) {
   } catch { return tz; }
 }
 
+// Gemini 2.5 Flash with Google Search grounding — fallback when Serper quota is exhausted
+async function callGeminiWithSearch(company, lang, today, timezone_label) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey || apiKey === 'add_later') throw new Error('Gemini API key not set');
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+  const prompt = `Search the web for recent news about "${company}" from the last 7 days. Analyze what you find and return a brand intelligence digest in ${lang}.
+
+Return ONLY valid JSON — no markdown, no explanation — matching this exact schema:
+{
+  "company": "${company}",
+  "date": "${today}",
+  "timezone_label": "${timezone_label}",
+  "model_used": "gemini-2.5-flash (web search)",
+  "news": [{"title":"","source":"","url":"","sentiment":"positive|negative|neutral","emotion":"","snippet":""}],
+  "social": [{"title":"","source":"","url":"","sentiment":"positive|negative|neutral","snippet":""}],
+  "executive_mentions": [{"person":"","title":"","source":"","url":"","sentiment":"positive|negative|neutral","snippet":""}],
+  "reviews": [],
+  "ai_visibility": [],
+  "competitor_signals": [{"company":"","signal_type":"","detail":""}],
+  "corporate_events": [{"type":"","headline":"","implication":""}],
+  "keywords": [],
+  "sov": {"company_pct": 0, "competitors": []},
+  "sparkline": [0,0,0,0,0,0,0],
+  "crisis_flag": {"triggered": false, "reason": ""},
+  "watch_out": null
+}
+
+Rules: news up to 10 items; social up to 5; keywords top 8 brand terms; crisis_flag.triggered = true if >30% news is negative; watch_out = one-sentence biggest risk or null.`;
+
+  const res = await withRetry(() => axios.post(url, {
+    tools: [{ google_search: {} }],
+    contents: [{ parts: [{ text: prompt }] }],
+  }));
+  // google_search responses may have multiple parts — join all text parts
+  const parts = res.data?.candidates?.[0]?.content?.parts || [];
+  const text  = parts.filter(p => p.text).map(p => p.text).join('');
+  if (!text) throw new Error('Gemini web search returned empty response');
+  return { text, model_used: 'gemini-2.5-flash (web search)' };
+}
+
 // build DigestSchema prompt from search results and call the configured LLM
 export async function generateDigest(company, searchResults, settings = {}) {
   const model          = settings.llm_model      || 'gemini-2.5-flash';
@@ -244,6 +284,26 @@ export async function generateDigest(company, searchResults, settings = {}) {
   const tz     = settings.timezone || 'Asia/Kolkata';
   const today          = new Date().toISOString().split('T')[0];
   const timezone_label = fmtLocalTime(tz); // always server-computed — never rely on LLM to guess
+
+  // Serper quota exhausted — use Gemini web search grounding instead of empty prompt
+  if (searchResults.length === 0) {
+    console.log(`[llm] No Serper results for "${company}" — falling back to Gemini web search`);
+    try {
+      const { text, model_used } = await callGeminiWithSearch(company, lang, today, timezone_label);
+      const cleaned = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+      const digest  = JSON.parse(cleaned);
+      digest.model_used     = model_used;
+      digest.timezone_label = timezone_label;
+      return digest;
+    } catch (err) {
+      console.error(`[llm] Gemini web search fallback failed: ${err.message}`);
+      // last resort: rule-based empty digest with a clear warning
+      const fallback = buildBasicDigest(company, [], timezone_label);
+      const digest   = JSON.parse(fallback.text);
+      digest.watch_out = 'Serper search quota exhausted and Gemini web search unavailable. Top up Serper credits at serper.dev to restore full digests.';
+      return digest;
+    }
+  }
 
   // cap at 60 results; pass person_badge for executive items so LLM populates executive_mentions
   const items = searchResults.slice(0, 60).map(r => ({
