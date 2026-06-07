@@ -241,6 +241,8 @@ export async function callGeminiWithSearch(company, lang, today, timezone_label)
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
   const prompt = `Search the web for recent news about "${company}" from the last 7 days. Analyze what you find and return a brand intelligence digest in ${lang}.
 
+IMPORTANT URL RULE: For every url field, you MUST provide the direct, permanent URL of the original article or webpage (e.g. https://economictimes.indiatimes.com/...). Never use Google redirect URLs or vertexaisearch.cloud.google.com URLs. If you do not know the exact direct URL, set url to "".
+
 Return ONLY valid JSON — no markdown, no explanation — matching this exact schema:
 {
   "company": "${company}",
@@ -271,7 +273,10 @@ Rules: news up to 10 items; social up to 5; keywords top 8 brand terms; crisis_f
   const parts = res.data?.candidates?.[0]?.content?.parts || [];
   const text  = parts.filter(p => p.text).map(p => p.text).join('');
   if (!text) throw new Error('Gemini web search returned empty response');
-  return { text, model_used: 'gemini-2.5-flash (web search)' };
+
+  // strip any grounding redirect URLs that slipped through — they expire within minutes
+  const sanitised = text.replace(/"url"\s*:\s*"https?:\/\/vertexaisearch\.cloud\.google\.com\/[^"]*"/g, '"url": ""');
+  return { text: sanitised, model_used: 'gemini-2.5-flash (web search)' };
 }
 
 // build DigestSchema prompt from search results and call the configured LLM
