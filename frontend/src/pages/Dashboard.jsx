@@ -43,7 +43,7 @@ const PERIODS = [
 function getPeriodDates(period, customFrom, customTo) {
   const today = new Date().toISOString().slice(0, 10);
   const ago   = (days) => new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
-  if (period === 'today')  return { dateFrom: today,   dateTo: today };
+  if (period === 'today')  return { dateFrom: ago(1),  dateTo: today };
   if (period === '7d')     return { dateFrom: ago(7),  dateTo: today };
   if (period === '30d')    return { dateFrom: ago(30), dateTo: today };
   if (period === 'custom') return { dateFrom: customFrom || undefined, dateTo: customTo || undefined };
