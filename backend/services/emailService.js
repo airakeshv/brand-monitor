@@ -67,6 +67,14 @@ function fmtReadable(iso) {
   } catch { return iso || ''; }
 }
 
+// render a news title as a clickable link only when URL is a valid external URL
+function titleLink(url, title, style) {
+  if (url && url.startsWith('http')) {
+    return `<a href="${url}" target="_blank" rel="noopener noreferrer" style="${style}">${title}</a>`;
+  }
+  return `<span style="${style}">${title}</span>`;
+}
+
 // build HTML email from DigestSchema
 function buildHtml(digest) {
   const newsRows = (digest.news || []).map(n => `
@@ -74,7 +82,7 @@ function buildHtml(digest) {
       <td style="padding:10px 0;border-bottom:1px solid #2A3858">
         <span style="background:rgba(91,99,235,0.15);color:#5B63EB;border:1px solid rgba(91,99,235,0.3);border-radius:999px;padding:2px 10px;font-size:11px;font-weight:600;text-transform:uppercase">${n.source || ''}</span>
         <span style="margin-left:8px;background:${sentimentColor(n.sentiment)};color:#0A0E27;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:600">${n.sentiment || ''}</span>
-        <div style="margin-top:6px"><a href="${n.url||'#'}" style="color:#FFFFFF;font-weight:600;text-decoration:none">${n.title||''}</a></div>
+        <div style="margin-top:6px">${titleLink(n.url, n.title||'', 'color:#FFFFFF;font-weight:600;text-decoration:none')}</div>
         <div style="color:#B4B4B4;font-size:13px;margin-top:4px">${n.snippet||''}</div>
       </td>
     </tr>`).join('');
@@ -84,7 +92,7 @@ function buildHtml(digest) {
       <td style="padding:10px 0;border-bottom:1px solid #2A3858">
         <span style="background:rgba(168,85,247,0.15);color:#a855f7;border:1px solid rgba(168,85,247,0.3);border-radius:999px;padding:2px 10px;font-size:11px;font-weight:600;text-transform:uppercase">${s.source || ''}</span>
         ${s.sentiment ? `<span style="margin-left:8px;background:${sentimentColor(s.sentiment)};color:#0A0E27;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:600">${s.sentiment}</span>` : ''}
-        <div style="margin-top:6px"><a href="${s.url||'#'}" style="color:#FFFFFF;font-weight:600;text-decoration:none">${s.title||''}</a></div>
+        <div style="margin-top:6px">${titleLink(s.url, s.title||'', 'color:#FFFFFF;font-weight:600;text-decoration:none')}</div>
         <div style="color:#B4B4B4;font-size:13px;margin-top:4px">${s.snippet||''}</div>
       </td>
     </tr>`).join('');
@@ -94,7 +102,7 @@ function buildHtml(digest) {
       <td style="padding:10px 0;border-bottom:1px solid #2A3858">
         <span style="background:rgba(233,30,140,0.15);color:#E91E8C;border:1px solid rgba(233,30,140,0.35);border-radius:999px;padding:2px 10px;font-size:11px;font-weight:700">👤 ${e.person_name||''}${e.role ? ' · ' + e.role : ''}</span>
         ${e.sentiment ? `<span style="margin-left:8px;background:${sentimentColor(e.sentiment)};color:#0A0E27;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:600">${e.sentiment}</span>` : ''}
-        <div style="margin-top:6px"><a href="${e.url||'#'}" style="color:#FFFFFF;font-weight:600;text-decoration:none">${e.title||''}</a></div>
+        <div style="margin-top:6px">${titleLink(e.url, e.title||'', 'color:#FFFFFF;font-weight:600;text-decoration:none')}</div>
         <div style="color:#B4B4B4;font-size:13px;margin-top:4px">${e.snippet||''}</div>
       </td>
     </tr>`).join('');
@@ -283,7 +291,7 @@ function buildCompanySectionHtml(digest) {
     <tr><td style="padding:8px 0;border-bottom:1px solid #1e2a44">
       <span style="background:rgba(91,99,235,0.15);color:#5B63EB;border:1px solid rgba(91,99,235,0.3);border-radius:999px;padding:1px 8px;font-size:11px;font-weight:600">${n.source||''}</span>
       <span style="margin-left:6px;background:${sentimentColor(n.sentiment)};color:#0A0E27;border-radius:999px;padding:1px 6px;font-size:11px;font-weight:600">${n.sentiment||''}</span>
-      <div style="margin-top:4px"><a href="${n.url||'#'}" style="color:#FFFFFF;font-weight:600;font-size:13px;text-decoration:none">${n.title||''}</a></div>
+      <div style="margin-top:4px">${titleLink(n.url, n.title||'', 'color:#FFFFFF;font-weight:600;font-size:13px;text-decoration:none')}</div>
       ${n.snippet ? `<div style="color:#B4B4B4;font-size:12px;margin-top:3px">${n.snippet}</div>` : ''}
     </td></tr>`).join('');
 
@@ -292,7 +300,7 @@ function buildCompanySectionHtml(digest) {
     <tr><td style="padding:8px 0;border-bottom:1px solid #1e2a44">
       <span style="background:rgba(168,85,247,0.15);color:#a855f7;border:1px solid rgba(168,85,247,0.3);border-radius:999px;padding:1px 8px;font-size:11px;font-weight:600">${s.source||''}</span>
       ${s.sentiment ? `<span style="margin-left:6px;background:${sentimentColor(s.sentiment)};color:#0A0E27;border-radius:999px;padding:1px 6px;font-size:11px;font-weight:600">${s.sentiment}</span>` : ''}
-      <div style="margin-top:4px"><a href="${s.url||'#'}" style="color:#FFFFFF;font-weight:600;font-size:13px;text-decoration:none">${s.title||''}</a></div>
+      <div style="margin-top:4px">${titleLink(s.url, s.title||'', 'color:#FFFFFF;font-weight:600;font-size:13px;text-decoration:none')}</div>
       ${s.snippet ? `<div style="color:#B4B4B4;font-size:12px;margin-top:3px">${s.snippet}</div>` : ''}
     </td></tr>`).join('');
 

@@ -9,6 +9,19 @@ function fmtDate(iso) {
   } catch { return ''; }
 }
 
+// render a news title as a clickable link only when URL is a real external URL
+function TitleLink({ url, title, style }) {
+  const isExternal = url && url.startsWith('http');
+  if (isExternal) {
+    return (
+      <a href={url} target="_blank" rel="noopener noreferrer" style={style}>
+        {title}
+      </a>
+    );
+  }
+  return <span style={style}>{title}</span>;
+}
+
 // sentiment → color mapping
 function sentimentColor(s = '') {
   if (s.includes('strongly_positive')) return '#22c55e';
@@ -55,10 +68,8 @@ function NewsRow({ item }) {
         )}
       </div>
       <div style={{ marginTop: 6 }}>
-        <a href={item.url || '#'} target="_blank" rel="noreferrer"
-          style={{ color: '#FFFFFF', fontWeight: 600, textDecoration: 'none' }}>
-          {item.title}
-        </a>
+        <TitleLink url={item.url} title={item.title}
+          style={{ color: '#FFFFFF', fontWeight: 600, textDecoration: 'none' }} />
       </div>
       {item.snippet && (
         <div style={{ color: '#B4B4B4', fontSize: 13, marginTop: 4 }}>{item.snippet}</div>
@@ -102,10 +113,8 @@ function ExecutiveMentionRow({ item }) {
         )}
       </div>
       <div style={{ marginTop: 6 }}>
-        <a href={item.url || '#'} target="_blank" rel="noreferrer"
-          style={{ color: '#FFFFFF', fontWeight: 600, textDecoration: 'none' }}>
-          {item.title}
-        </a>
+        <TitleLink url={item.url} title={item.title}
+          style={{ color: '#FFFFFF', fontWeight: 600, textDecoration: 'none' }} />
       </div>
       {item.snippet && (
         <div style={{ color: '#B4B4B4', fontSize: 13, marginTop: 4 }}>{item.snippet}</div>
