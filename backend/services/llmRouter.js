@@ -263,19 +263,30 @@ Return ONLY valid JSON — no markdown, no explanation — matching this exact s
   "watch_out": null
 }
 
-Rules: news up to 10 items; social up to 5; keywords top 8 brand terms; crisis_flag.triggered = true if >30% news is negative; watch_out = one-sentence biggest risk or null.`;
+Rules:
+- news: up to 10 items — if direct news is scarce, include industry news or sector context relevant to ${company}
+- social: up to 5 items
+- keywords: top 8 brand-related terms (always populate this)
+- NEVER return empty news array — always include at least 3 news items even if they are sector/industry news
+- crisis_flag.triggered = true if >30% news is negative
+- watch_out: one-sentence biggest risk or null`;
 
   const res = await withRetry(() => axios.post(url, {
     tools: [{ google_search: {} }],
     contents: [{ parts: [{ text: prompt }] }],
   }));
   // google_search responses may have multiple parts — join all text parts
-  const parts = res.data?.candidates?.[0]?.content?.parts || [];
-  const text  = parts.filter(p => p.text).map(p => p.text).join('');
-  if (!text) throw new Error('Gemini web search returned empty response');
+  const parts   = res.data?.candidates?.[0]?.content?.parts || [];
+  const rawText = parts.filter(p => p.text).map(p => p.text).join('');
+  if (!rawText) throw new Error('Gemini web search returned empty response');
+
+  // Gemini sometimes prefixes the JSON with prose — extract the outermost JSON object
+  const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error('Gemini web search response contained no JSON object');
+  const extracted = jsonMatch[0];
 
   // strip any grounding redirect URLs that slipped through — they expire within minutes
-  const sanitised = text.replace(/"url"\s*:\s*"https?:\/\/vertexaisearch\.cloud\.google\.com\/[^"]*"/g, '"url": ""');
+  const sanitised = extracted.replace(/"url"\s*:\s*"https?:\/\/vertexaisearch\.cloud\.google\.com\/[^"]*"/g, '"url": ""');
   return { text: sanitised, model_used: 'gemini-2.5-flash (web search)' };
 }
 
