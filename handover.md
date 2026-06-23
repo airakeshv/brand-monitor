@@ -86,3 +86,19 @@ Last updated: 2026-06-23 (session 2)
 
 - **Serper quota exhausted** → Gemini web search grounding auto-activates as fallback (no Serper credits needed).
 - **News links** — titles without a valid `http` URL render as plain text (not broken links) in both email and dashboard.
+
+---
+## 2026-06-23 — Resend Domain Verification Status
+- getvoxagent.com added to Resend (North Virginia us-east-1)
+- MX record: ✅ Verified
+- SPF record: ✅ Verified  
+- DKIM record: ❌ Showing Failed on Resend BUT DNS is confirmed correct via dig command
+- Root cause: Resend caching issue — not a DNS problem
+- RESEND_FROM_EMAIL=reports@getvoxagent.com added to Railway env vars
+- **Tomorrow first task: open resend.com/domains → click getvoxagent.com → click Verify/Retry**
+- Once verified: emails go from reports@getvoxagent.com, no more spam landing
+
+## Landing page fixes pending (Landing.jsx only)
+- Remove Dashboard from footer
+- Add Pricing link to landing page top navbar
+- Add bottom CTA section before footer
