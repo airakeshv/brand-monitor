@@ -48,6 +48,7 @@ export default function Navbar() {
         <NavLink to="/dashboard" className={navClass}>Dashboard</NavLink>
         <NavLink to="/settings"  className={navClass}>Settings</NavLink>
         <NavLink to="/history"   className={navClass}>History</NavLink>
+        <NavLink to="/pricing"   className={navClass}>Pricing</NavLink>
       </div>
 
       {/* Right side: workspace switcher, email (desktop only), logout, hamburger (mobile only) */}
@@ -102,6 +103,7 @@ export default function Navbar() {
           <NavLink to="/dashboard" className={mobileNavClass} onClick={() => setMenuOpen(false)}>Dashboard</NavLink>
           <NavLink to="/settings"  className={mobileNavClass} onClick={() => setMenuOpen(false)}>Settings</NavLink>
           <NavLink to="/history"   className={mobileNavClass} onClick={() => setMenuOpen(false)}>History</NavLink>
+          <NavLink to="/pricing"   className={mobileNavClass} onClick={() => setMenuOpen(false)}>Pricing</NavLink>
           {email && (
             <div style={{
               color: '#6B7A99', fontSize: 12, padding: '8px 16px 4px',
