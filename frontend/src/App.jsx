@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Dashboard  from './pages/Dashboard.jsx';
 import Settings   from './pages/Settings.jsx';
 import History    from './pages/History.jsx';
+import Landing    from './pages/Landing.jsx';
 import Pricing    from './pages/Pricing.jsx';
 import Login      from './pages/Login.jsx';
 import AuthVerify from './pages/AuthVerify.jsx';
@@ -34,7 +35,7 @@ export default function App() {
         <Route path="/auth/verify"   element={<AuthVerify />} />
 
         {/* root redirect */}
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/" element={<Landing />} />
 
         {/* protected routes */}
         <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
