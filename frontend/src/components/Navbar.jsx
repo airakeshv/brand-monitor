@@ -48,7 +48,13 @@ export default function Navbar() {
         <NavLink to="/dashboard" className={navClass}>Dashboard</NavLink>
         <NavLink to="/settings"  className={navClass}>Settings</NavLink>
         <NavLink to="/history"   className={navClass}>History</NavLink>
-        <NavLink to="/pricing"   className={navClass}>Pricing</NavLink>
+        <NavLink to="/pricing" className={({ isActive }) =>
+          `px-4 py-2 text-sm font-semibold rounded-md transition-colors border ${
+            isActive
+              ? 'bg-[#5B63EB] text-white border-[#5B63EB]'
+              : 'border-[#5B63EB] text-[#A78BFA] hover:bg-[#5B63EB] hover:text-white'
+          }`
+        }>Pricing</NavLink>
       </div>
 
       {/* Right side: workspace switcher, email (desktop only), logout, hamburger (mobile only) */}
