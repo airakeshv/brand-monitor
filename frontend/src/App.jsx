@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Dashboard  from './pages/Dashboard.jsx';
 import Settings   from './pages/Settings.jsx';
 import History    from './pages/History.jsx';
+import Pricing    from './pages/Pricing.jsx';
 import Login      from './pages/Login.jsx';
 import AuthVerify from './pages/AuthVerify.jsx';
 import Navbar     from './components/Navbar.jsx';
@@ -39,6 +40,7 @@ export default function App() {
         <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
         <Route path="/settings"  element={<ProtectedRoute><Settings /></ProtectedRoute>} />
         <Route path="/history"   element={<ProtectedRoute><History /></ProtectedRoute>} />
+        <Route path="/pricing"   element={<ProtectedRoute><Pricing /></ProtectedRoute>} />
       </Routes>
       </WorkspaceProvider>
     </BrowserRouter>
