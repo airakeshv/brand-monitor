@@ -1,5 +1,5 @@
 # Brand Monitor — Project Handover
-Last updated: 2026-06-23
+Last updated: 2026-06-23 (session 2)
 
 ---
 
@@ -15,7 +15,7 @@ Last updated: 2026-06-23
 
 ---
 
-## Features Built — 21 of 32
+## Features Built — 24 of 32
 
 | # | Feature | Notes |
 |---|---------|-------|
@@ -40,6 +40,9 @@ Last updated: 2026-06-23
 | 19 | Plan tier system | Free and Pro tiers |
 | 20 | Executive name tracking | Mentions surfaced in digest |
 | 21 | WhatsApp delivery | Twilio sandbox (join code required every 72h) |
+| 22 | Pricing page | Free vs Pro cards, dark theme, `/pricing` route, Navbar CTA |
+| 23 | Landing page | Hero, ticker, How It Works, Features, Pricing preview, Footer |
+| 24 | Navbar Pricing link | Desktop + mobile, styled as purple outlined CTA button |
 | — | UI polish | Spinners, toasts, empty states, mobile responsive |
 
 ---
@@ -48,10 +51,10 @@ Last updated: 2026-06-23
 
 | # | Feature | Status |
 |---|---------|--------|
-| 22 | Razorpay billing | Pricing page built; **route missing in App.jsx** — not showing |
-| 23 | Landing page + custom domain | Not started |
-| 24 | Resend domain verification | Not started |
-| 25 | Digest pause / vacation mode | Not started |
+| 25 | Razorpay billing | Pricing page UI done; payment flow + webhook not yet wired |
+| 26 | Custom domain | Not started |
+| 27 | Resend domain verification | Not started |
+| 28 | Digest pause / vacation mode | Not started |
 
 ---
 
